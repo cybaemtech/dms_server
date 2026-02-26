@@ -21,11 +21,13 @@ export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
+  updateUser(id: string, updates: Partial<User>): Promise<User | undefined>;
   deleteUser(id: string): Promise<void>;
 
   getDocument(id: string): Promise<Document | undefined>;
   getDocumentsByStatus(status: string, userId?: string): Promise<Document[]>;
   getDocumentsByUser(userId: string): Promise<Document[]>;
+  getDocumentsByDocNumber(docNumber: string): Promise<Document[]>;
   createDocument(document: InsertDocument): Promise<Document>;
   updateDocument(id: string, updates: Partial<Document>): Promise<Document | undefined>;
 
@@ -286,18 +288,60 @@ export class JsonStorage implements IStorage {
 
   async createUser(insertUser: InsertUser): Promise<User> {
     await this.ready;
+    
+    // Generate auto-increment user ID based on role
+    const rolePrefix = {
+      'creator': 'CA',
+      'approver': 'AD', 
+      'issuer': 'IA',
+      'admin': 'AM',
+      'recipient': 'RC'
+    };
+    
+    const prefix = rolePrefix[insertUser.role as keyof typeof rolePrefix] || 'US';
+    const existingUsersWithRole = this.data.users.filter(u => u.id.startsWith(prefix));
+    let nextNumber = 1;
+    
+    if (existingUsersWithRole.length > 0) {
+      const numbers = existingUsersWithRole.map(u => {
+        const match = u.id.match(new RegExp(`^${prefix}-(\\d+)$`));
+        return match ? parseInt(match[1], 10) : 0;
+      }).filter(num => !isNaN(num));
+      
+      if (numbers.length > 0) {
+        nextNumber = Math.max(...numbers) + 1;
+      }
+    }
+    
+    const userId = `${prefix}-${nextNumber.toString().padStart(3, '0')}`;
+    
     const user: User = {
-      id: `user-${Date.now()}`,
+      id: userId,
       username: insertUser.username,
       password: insertUser.password,
       role: insertUser.role || "creator",
       fullName: insertUser.fullName,
       masterCopyAccess: insertUser.masterCopyAccess ?? false,
-      departmentId: (insertUser as any).departmentId || null
+      departmentId: (insertUser as any).departmentId || null,
+      departmentName: (insertUser as any).departmentName || null,
+      departmentCode: (insertUser as any).departmentCode || null,
+      location: (insertUser as any).location || null
     };
     this.data.users.push(user);
     await this.saveData();
     return user;
+  }
+
+  async updateUser(id: string, updates: Partial<User>): Promise<User | undefined> {
+    await this.ready;
+    const index = this.data.users.findIndex(u => u.id === id);
+    if (index === -1) {
+      throw new Error(`User with id ${id} not found`);
+    }
+    
+    this.data.users[index] = { ...this.data.users[index], ...updates };
+    await this.saveData();
+    return this.data.users[index];
   }
 
   async deleteUser(id: string): Promise<void> {
@@ -327,6 +371,13 @@ export class JsonStorage implements IStorage {
     return this.data.documents
       .filter(d => d.preparedBy === userId)
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }
+
+  async getDocumentsByDocNumber(docNumber: string): Promise<Document[]> {
+    await this.ready;
+    return this.data.documents
+      .filter(d => d.docNumber === docNumber)
+      .sort((a, b) => (b.revisionNo || 0) - (a.revisionNo || 0));
   }
 
   async createDocument(insertDocument: InsertDocument): Promise<Document> {

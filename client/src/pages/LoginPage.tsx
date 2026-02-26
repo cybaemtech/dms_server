@@ -4,8 +4,9 @@ import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
-import { FileText, Upload, CheckCircle, ShieldCheck, FolderKanban, Phone, Moon, Sun } from "lucide-react";
+import { FileText, Upload, CheckCircle, ShieldCheck, FolderKanban, Phone, Moon, Sun, ArrowRight, Shield, Sparkles, Globe } from "lucide-react";
 import { SiGoogle, SiFacebook } from "react-icons/si";
+import { FaMicrosoft } from "react-icons/fa";
 import { useState, useEffect } from "react";
 import {
   Form,
@@ -15,6 +16,8 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import { motion, AnimatePresence } from "framer-motion";
+import { Toaster, toast } from "react-hot-toast";
 
 const loginSchema = z.object({
   username: z.string().min(1, "Email is required").email("Please enter a valid email"),
@@ -29,6 +32,8 @@ interface LoginPageProps {
 
 export default function LoginPage({ onLogin }: LoginPageProps) {
   const [isDark, setIsDark] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
 
   useEffect(() => {
     const savedTheme = localStorage.getItem('theme');
@@ -53,175 +58,310 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
     },
   });
 
-  const handleSubmit = (data: LoginFormValues) => {
-    console.log("Login attempt:", data);
-    onLogin?.(data);
+  const handleSubmit = async (data: LoginFormValues) => {
+    setIsLoading(true);
+    try {
+      // Simulate API call
+      await new Promise(resolve => setTimeout(resolve, 100));
+      console.log("Login attempt:", data);
+
+      // Trigger colorful transition
+      setIsLoggingIn(true);
+
+      toast.success('Access Granted! Establishing Secure Connection...', {
+        icon: '🔐',
+        style: {
+          borderRadius: '12px',
+          background: '#0F172A',
+          color: '#F8FAFC',
+        },
+      });
+
+      // Wait for colorful transition - adjusted for total 1s feel
+      await new Promise(resolve => setTimeout(resolve, 400));
+      onLogin?.(data);
+    } catch (error) {
+      toast.error('Login failed. Please check your credentials.');
+      setIsLoggingIn(false);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const features = [
-    { icon: Upload, title: "Document Creation", desc: "Upload documents with metadata" },
-    { icon: CheckCircle, title: "Approval Workflow", desc: "Multi-level approval process" },
-    { icon: ShieldCheck, title: "Access Control", desc: "Role-based permissions" },
-    { icon: FolderKanban, title: "Version Tracking", desc: "Complete version history" },
+    { icon: Globe, title: "Global Standard", desc: "One World, One Quality philosophy" },
+    { icon: ShieldCheck, title: "Colorant Integrity", desc: "Secure batch & revision control" },
+    { icon: Upload, title: "Smart Repository", desc: "Automated document lifecycle" },
+    { icon: CheckCircle, title: "Quality Assurance", desc: "Multi-tier approval workflows" },
   ];
 
   return (
-    <div className="min-h-screen bg-background dark:bg-gray-900 flex flex-col">
-      <header className="flex items-center justify-between px-6 py-4 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-blue-600 rounded-lg">
-            <FileText className="w-6 h-6 text-white" />
-          </div>
-          <span className="text-lg font-bold text-foreground">Document Management System</span>
-        </div>
-        <Button 
-          variant="ghost" 
-          size="icon" 
-          onClick={toggleTheme}
-          data-testid="button-theme-toggle"
-        >
-          {isDark ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-        </Button>
-      </header>
+    <div className="h-screen bg-slate-50 dark:bg-slate-950 flex flex-col relative overflow-hidden font-sans">
+      <Toaster position="top-right" />
 
-      <div className="flex-1 flex">
-        <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-white to-gray-50 dark:from-gray-800 dark:to-gray-900 p-12 flex-col justify-center">
-          <div className="max-w-lg space-y-8">
-            <div className="inline-block px-3 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-sm font-medium rounded-full">
-              Modern Document Control
-            </div>
-            
-            <div>
-              <h1 className="text-4xl font-bold mb-4 text-gray-900 dark:text-white">
-                Streamline Your Document Workflows
-              </h1>
-              <p className="text-gray-600 dark:text-gray-300 text-lg">
-                A secure, role-based system for managing SOPs, forms, and revisions with approval workflows and version control.
-              </p>
-            </div>
-            
-            <div className="grid grid-cols-2 gap-6">
-              {features.map((feature, idx) => (
-                <div key={idx} className="space-y-2">
-                  <div className="p-3 bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 rounded-lg w-fit">
-                    <feature.icon className="w-6 h-6 text-blue-600 dark:text-blue-400" />
-                  </div>
-                  <h3 className="font-semibold text-gray-900 dark:text-white">{feature.title}</h3>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">{feature.desc}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <div className="flex-1 flex items-center justify-center p-4 bg-white dark:bg-gray-900">
-          <Card className="w-full max-w-md p-8 shadow-xl bg-white dark:bg-gray-800">
-            <div className="mb-6">
-              <h2 className="text-2xl font-bold text-foreground">Sign In</h2>
-            </div>
-
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
-                <FormField
-                  control={form.control}
-                  name="username"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Email</FormLabel>
-                      <FormControl>
-                        <Input 
-                          type="email"
-                          placeholder="Enter your email" 
-                          {...field} 
-                          data-testid="input-username" 
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="password"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Password</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="password"
-                          placeholder="Enter your password"
-                          {...field}
-                          data-testid="input-password"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700" data-testid="button-login">
-                  Sign In
-                </Button>
-              </form>
-            </Form>
-
-            <div className="mt-6">
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-muted"></div>
-                </div>
-                <div className="relative flex justify-center text-xs uppercase">
-                  <span className="bg-card px-2 text-muted-foreground">OR CONTINUE WITH</span>
+      {/* Full Screen Colorful Login Transition */}
+      <AnimatePresence>
+        {isLoggingIn && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-white dark:bg-slate-950"
+          >
+            <motion.div
+              animate={{
+                rotate: 360,
+                scale: [1, 1.5, 1],
+              }}
+              transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+              className="absolute w-[150vw] h-[150vw] bg-gradient-to-tr from-blue-600 via-purple-600 to-pink-500 rounded-full blur-[150px] opacity-60"
+            />
+            <div className="relative z-10 flex flex-col items-center gap-6">
+              <img src="/logo.png" alt="Logo" className="h-16 w-auto animate-pulse" />
+              <div className="flex flex-col items-center">
+                <h2 className="text-2xl font-black text-slate-900 dark:text-white tracking-[4px] uppercase">Initializing</h2>
+                <div className="flex gap-1 mt-2">
+                  {[0, 1, 2].map((i) => (
+                    <motion.div
+                      key={i}
+                      animate={{ opacity: [0.2, 1, 0.2] }}
+                      transition={{ duration: 0.6, repeat: Infinity, delay: i * 0.2 }}
+                      className="w-1.5 h-1.5 bg-blue-600 rounded-full"
+                    />
+                  ))}
                 </div>
               </div>
-
-              <div className="grid grid-cols-3 gap-3 mt-4">
-                <Button variant="outline" size="sm" type="button" data-testid="button-google-login">
-                  <SiGoogle className="w-4 h-4" />
-                </Button>
-                <Button variant="outline" size="sm" type="button" data-testid="button-facebook-login">
-                  <SiFacebook className="w-4 h-4" />
-                </Button>
-                <Button variant="outline" size="sm" type="button" data-testid="button-phone-login">
-                  <Phone className="w-4 h-4" />
-                </Button>
-              </div>
             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-            <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
-              <p className="text-xs font-semibold text-foreground mb-2">Demo Credentials:</p>
-              <div className="space-y-1 text-xs">
-                <p className="text-muted-foreground">
-                  <span className="font-medium text-blue-600 dark:text-blue-400">Creator:</span> Priyanka.k@cybaemtech.com / 123
-                </p>
-                <p className="text-muted-foreground">
-                  <span className="font-medium text-green-600 dark:text-green-400">Approver:</span> approver@cybaem.com / 123
-                </p>
-                <p className="text-muted-foreground">
-                  <span className="font-medium text-purple-600 dark:text-purple-400">Issuer:</span> issuer@cybaem.com / 123
-                </p>
-                <p className="text-muted-foreground">
-                  <span className="font-medium text-orange-600 dark:text-orange-400">Admin:</span> admin@cybaem.com / 123
-                </p>
-              </div>
-            </div>
-          </Card>
-        </div>
+      {/* Animated Pigment Blobs (Background) */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-40 dark:opacity-20">
+        <motion.div
+          animate={{
+            x: [0, 100, 0],
+            y: [0, -50, 0],
+            scale: [1, 1.2, 1],
+          }}
+          transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
+          className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-500 rounded-full blur-[120px]"
+        />
+        <motion.div
+          animate={{
+            x: [0, -80, 0],
+            y: [0, 60, 0],
+            scale: [1.2, 1, 1.2],
+          }}
+          transition={{ duration: 25, repeat: Infinity, ease: "linear" }}
+          className="absolute bottom-[-10%] right-[-10%] w-[45%] h-[45%] bg-purple-500 rounded-full blur-[120px]"
+        />
+        <motion.div
+          animate={{
+            x: [100, 0, 100],
+            y: [50, 0, 50],
+          }}
+          transition={{ duration: 18, repeat: Infinity, ease: "linear" }}
+          className="absolute top-[30%] right-[10%] w-[30%] h-[30%] bg-pink-500 rounded-full blur-[100px]"
+        />
       </div>
 
-      <footer className="text-center py-4 text-sm text-gray-600 dark:text-gray-400 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700">
-        © 2024 Document Management System. All rights reserved.
-        <br />
-        Designed and maintained by{" "}
-        <a 
-          href="https://www.cybaemtech.com/"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-blue-600 dark:text-blue-400 hover:underline"
+      <header className="relative z-20 flex items-center justify-between px-8 py-3 bg-white/40 dark:bg-slate-900/40 backdrop-blur-md border-b border-white/20 dark:border-slate-800/20">
+        <motion.div
+          initial={{ x: -20, opacity: 0 }}
+          animate={{ x: 0, opacity: 1 }}
+          className="flex items-center gap-4"
         >
-          Cybaem Tech
-        </a>
+          <img src="/logo.png" alt="Neelikon Logo" className="h-8 w-auto" />
+          <div className="h-6 w-px bg-slate-300 dark:bg-slate-700"></div>
+          <span className="text-base font-black tracking-tight text-slate-900 dark:text-white uppercase">
+            Document Management System
+          </span>
+        </motion.div>
+
+        <div className="flex items-center gap-4">
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="hidden md:flex items-center gap-2 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-[2px]"
+          >
+            <Globe className="w-3 h-3 text-blue-500" />
+            One World One Quality
+          </motion.div>
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={toggleTheme}
+            className="rounded-full w-8 h-8 border-slate-200 dark:border-slate-800 bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm"
+          >
+            {isDark ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
+          </Button>
+        </div>
+      </header>
+
+      <main className="flex-1 flex flex-col lg:flex-row relative z-10 overflow-hidden">
+        {/* Branding Section */}
+        <div className="lg:w-2/5 flex flex-col justify-center p-8 lg:p-16 space-y-6">
+          <motion.div
+            initial={{ y: 20, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ delay: 0.2 }}
+            className="space-y-4"
+          >
+            <div className="inline-flex items-center gap-2 px-3 py-1 bg-blue-600 text-white text-[9px] font-black uppercase tracking-[3px] rounded-full shadow-lg shadow-blue-500/30">
+              <Sparkles className="w-3 h-3" />
+              Specialty Colorants
+            </div>
+            <h1 className="text-3xl md:text-5xl font-black leading-[1.1] text-slate-900 dark:text-white">
+              Revolutionary <br />
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-purple-600">
+                Digital Repository
+              </span>
+            </h1>
+            <p className="text-base text-slate-600 dark:text-slate-400 max-w-sm leading-relaxed font-medium">
+              Neelikon's world-class platform ensuring document integrity and global quality standards.
+            </p>
+          </motion.div>
+
+          <motion.div
+            className="grid grid-cols-2 gap-3"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.4 }}
+          >
+            {features.map((f, i) => (
+              <div key={i} className="p-3 bg-white/40 dark:bg-slate-900/40 backdrop-blur-md rounded-xl border border-white/20 dark:border-slate-800/20 group hover:border-blue-500/50 transition-all">
+                <div className="p-1.5 bg-blue-500/10 rounded-lg w-fit mb-2 group-hover:bg-blue-500 group-hover:text-white transition-colors duration-300">
+                  <f.icon className="w-4 h-4 text-blue-600 dark:text-blue-400 group-hover:text-white" />
+                </div>
+                <h3 className="font-bold text-slate-900 dark:text-white text-xs mb-0.5">{f.title}</h3>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-tight">{f.desc}</p>
+              </div>
+            ))}
+          </motion.div>
+        </div>
+
+        {/* Login Section */}
+        <div className="lg:w-3/5 flex items-center justify-center p-4 lg:p-8 relative">
+          <motion.div
+            initial={{ scale: 0.98, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ type: "spring", stiffness: 100, damping: 20 }}
+            className="w-full max-w-2xl relative"
+          >
+            {/* Login Card with Glassmorphism */}
+            <Card className="p-6 lg:p-10 shadow-[0_20px_50px_rgba(0,0,0,0.1)] dark:shadow-[0_20px_50px_rgba(0,0,0,0.3)] bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl border-white/40 dark:border-slate-800/40 rounded-[2.5rem] overflow-hidden relative">
+              <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-blue-600 via-purple-600 to-pink-500"></div>
+
+              <div className="mb-6 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+                <div>
+                  <h2 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight">System Portal</h2>
+                  <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">Authorized Access Only</p>
+                </div>
+                <img src="/logo.png" alt="Logo" className="h-10 w-auto self-start sm:self-auto" />
+              </div>
+
+              <div className="max-w-md mx-auto w-full">
+                <Form {...form}>
+                  <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
+                    <FormField
+                      control={form.control}
+                      name="username"
+                      render={({ field }) => (
+                        <FormItem className="space-y-1.5">
+                          <FormLabel className="text-[10px] font-black uppercase tracking-[2px] text-slate-500 dark:text-slate-400">Corporate Identity</FormLabel>
+                          <FormControl>
+                            <div className="relative group">
+                              <Input
+                                type="email"
+                                placeholder="email@neelikon.com"
+                                {...field}
+                                className="h-11 rounded-xl border-slate-200 dark:border-slate-800 bg-white/50 dark:bg-slate-950/50 focus:bg-white dark:focus:bg-slate-950 px-4 transition-all duration-300 ring-offset-blue-600"
+                              />
+                              <div className="absolute inset-y-0 right-3 flex items-center text-slate-400 group-focus-within:text-blue-500 transition-colors">
+                                <Shield className="w-4 h-4" />
+                              </div>
+                            </div>
+                          </FormControl>
+                          <FormMessage className="text-[10px]" />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="password"
+                      render={({ field }) => (
+                        <FormItem className="space-y-1.5">
+                          <FormLabel className="text-[10px] font-black uppercase tracking-[2px] text-slate-500 dark:text-slate-400">Access Key</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="password"
+                              placeholder="••••••••••••"
+                              {...field}
+                              className="h-11 rounded-xl border-slate-200 dark:border-slate-800 bg-white/50 dark:bg-slate-950/50 focus:bg-white dark:focus:bg-slate-950 px-4 transition-all duration-300"
+                            />
+                          </FormControl>
+                          <FormMessage className="text-[10px]" />
+                        </FormItem>
+                      )}
+                    />
+
+                    <Button
+                      type="submit"
+                      disabled={isLoading}
+                      className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs uppercase tracking-[2px] rounded-xl shadow-xl shadow-blue-500/25 transition-all duration-300 relative group overflow-hidden mt-2"
+                    >
+                      <AnimatePresence mode="wait">
+                        {isLoading ? (
+                          <motion.div
+                            key="loading"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="flex items-center gap-2"
+                          >
+                            <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                            Validating...
+                          </motion.div>
+                        ) : (
+                          <motion.span
+                            key="text"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="flex items-center gap-2"
+                          >
+                            Establish Session
+                            <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                          </motion.span>
+                        )}
+                      </AnimatePresence>
+                    </Button>
+                  </form>
+                </Form>
+
+                <div className="mt-6 flex items-center gap-3">
+                  <div className="flex-1 h-px bg-slate-200 dark:bg-slate-800"></div>
+                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Connect with</span>
+                  <div className="flex-1 h-px bg-slate-200 dark:bg-slate-800"></div>
+                </div>
+
+                <div className="flex justify-center gap-3 mt-4">
+                  <Button variant="outline" size="icon" className="rounded-full w-9 h-9 border-slate-200 dark:border-slate-800 hover:bg-white group"><SiGoogle className="w-3.5 h-3.5 text-slate-400 group-hover:text-red-500 transition-colors" /></Button>
+                  <Button variant="outline" size="icon" className="rounded-full w-9 h-9 border-slate-200 dark:border-slate-800 hover:bg-white group"><FaMicrosoft className="w-3.5 h-3.5 text-slate-400 group-hover:text-blue-500 transition-colors" /></Button>
+                  <Button variant="outline" size="icon" className="rounded-full w-9 h-9 border-slate-200 dark:border-slate-800 hover:bg-white group"><SiFacebook className="w-3.5 h-3.5 text-slate-400 group-hover:text-blue-700 transition-colors" /></Button>
+                </div>
+              </div>
+            </Card>
+          </motion.div>
+        </div>
+      </main>
+
+      <footer className="relative z-20 text-center py-4 bg-white/40 dark:bg-slate-900/40 backdrop-blur-md border-t border-white/20 dark:border-slate-800/20">
+        <div className="container mx-auto px-8 text-center text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-[1px]">
+          <p>© 2026 Neelikon Food Dyes & Chemicals Limited. All Rights Reserved by <a href="https://cybaemtech.com/" target="_blank" rel="noopener noreferrer" className="hover:text-blue-600 underline underline-offset-2 transition-colors">Cybaem Tech</a></p>
+        </div>
       </footer>
     </div>
   );

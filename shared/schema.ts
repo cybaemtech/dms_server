@@ -11,6 +11,9 @@ export const users = pgTable("users", {
   fullName: text("full_name").notNull(),
   masterCopyAccess: boolean("master_copy_access").notNull().default(false),
   departmentId: varchar("department_id").references(() => departments.id),
+  departmentName: text("department_name"),
+  departmentCode: text("department_code"),
+  location: text("location"),
 });
 
 export const departments = pgTable("departments", {

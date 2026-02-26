@@ -185,41 +185,101 @@ export class PDFService {
         .header-table { width: 100%; border-collapse: collapse; border: 1pt solid #000; table-layout: fixed; }
         .header-table td { 
           border: 1pt solid #000; 
-          padding: 3px 4px; 
-          vertical-align: middle; 
-          font-size: 7pt; 
+          padding: 4px 6px; 
+          vertical-align: top; 
+          font-size: 7.5pt; 
           word-wrap: break-word;
           overflow: hidden;
         }
         .company-name { 
           text-align: center; 
           font-weight: bold; 
-          font-size: 9pt; 
+          font-size: 10pt; 
           text-transform: uppercase; 
-          padding: 8px !important; 
+          padding: 10px !important; 
         }
         .label { font-weight: bold; }
         .value { font-weight: normal; }
-        .center-text { text-align: center; }
       </style>
       <div class="header-container">
         <table class="header-table">
           <tr>
-            <td colspan="6" class="company-name">NEELIKON FOOD DYES AND CHEMICALS LIMITED</td>
+            <td colspan="20" class="company-name">NEELIKON FOOD DYES AND CHEMICALS LIMITED</td>
           </tr>
           <tr>
-            <td style="width: 10%;"><span class="label">Issue No:</span><br><span class="value">01</span></td>
-            <td style="width: 18%;"><span class="label">Date of Issue:</span><br><span class="value">${this.formatDate(document.dateOfIssue)}</span></td>
-            <td style="width: 12%;"><span class="label">Rev. No:</span><br><span class="value">${document.revisionNo || 0}</span></td>
-            <td style="width: 15%;"><span class="label">Date of Rev.:</span><br><span class="value">${this.formatDate(document.dateOfRevision)}</span></td>
-            <td style="width: 15%;"><span class="label">Due Date:</span><br><span class="value">${this.formatDate(document.reviewDueDate)}</span></td>
-            <td style="width: 12%;"><span class="label">Period:</span><br><span class="value">${document.duePeriodYears || '3'}Y</span></td>
+            <td colspan="3" style="width: 15%;">
+              <span class="label">Location:</span> <span class="value">${(document as any).location || '-'}</span>
+            </td>
+            <td colspan="5" style="width: 25%;">
+              <span class="label">Date of Issue:</span> <span class="value">${this.formatDate(document.originalDateOfIssue || document.dateOfIssue)}</span>
+            </td>
+            <td colspan="3" style="width: 15%;">
+              <span class="label">Rev. No.:</span> <span class="value">${document.revisionNo !== undefined ? String(document.revisionNo).padStart(2, '0') : '00'}</span>
+            </td>
+            <td colspan="6" style="width: 30%;">
+              <span class="label">Date of Rev. :</span> <span class="value">${this.formatDate((document as any).dateOfRevision || (document.revisionNo !== undefined && document.revisionNo > 0 ? document.dateOfIssue : null))}</span><br>
+              <span class="label">Due Date of Rev.:</span> <span class="value">${this.formatDate(document.reviewDueDate)}</span>
+            </td>
+            <td colspan="3" style="width: 15%;">
+              <span class="label">Page</span> <span class="pageNumber"></span> of <span class="totalPages"></span>
+            </td>
           </tr>
           <tr>
-            <td colspan="2" style="width: 30%;"><span class="label">Dept.:</span> <span class="value">${deptName}</span></td>
-            <td colspan="3" style="width: 48%;"><span class="label">Title:</span> <span class="value">${document.docName}</span></td>
-            <td style="width: 12%;"><span class="label">Doc. No:</span><br><span class="value">${document.docNumber}</span></td>
+            <td colspan="5" style="width: 25%;">
+              <span class="label">Dept.:</span> <span class="value">${deptName}</span>
+            </td>
+            <td colspan="12" style="width: 60%;">
+              <span class="label">Title:</span> <span class="value">${document.docName}</span>
+            </td>
+            <td colspan="3" style="width: 15%;">
+              <span class="label">Doc. No.:</span> <span class="value">${document.docNumber}</span>
+            </td>
           </tr>
+        </table>
+      </div>
+    `;
+  }
+  private getFooterTemplate(document: Document, controlCopyInfo?: ControlCopyInfo): string {
+    const preparer = (document as any).preparerName || (document as any).creatorData?.fullName || 'Unknown';
+    const approver = (document as any).approverName || (document as any).approverData?.fullName || 'Pending';
+    const issuer = (document as any).issuerName || (document as any).issuerData?.fullName || 'Pending';
+
+    const preparerId = document.preparedBy || '-';
+    const approverId = document.approvedBy || '-';
+    const issuerId = document.issuedBy || '-';
+
+    const preparerDisplay = `${preparer} (${preparerId})`;
+    const approverDisplay = (approver === 'Pending' || !document.approvedBy) ? 'Pending' : `${approver} (${approverId})`;
+    const issuerDisplay = (issuer === 'Pending' || !document.issuedBy) ? 'Pending' : `${issuer} (${issuerId})`;
+
+    const status = document.status ? document.status.toUpperCase() : 'PENDING';
+
+    return `
+      <style>
+        .footer-container { margin: 0 45px; font-family: 'Segoe UI', Arial, sans-serif; width: 100%; border-top: 1pt solid #000; padding-top: 5px; }
+        .footer-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+        .footer-table td { font-size: 7.5pt; padding: 4px 6px; vertical-align: top; border: 1pt solid #000; }
+        .label { font-weight: bold; }
+        .value { font-weight: normal; }
+      </style>
+      <div class="footer-container">
+        <table class="footer-table">
+          <tr>
+            <td style="width: 33.33%;"><span class="label">Prepared By:</span><br><span class="value">${preparerDisplay}</span></td>
+            <td style="width: 33.33%;"><span class="label">Approved By:</span><br><span class="value">${approverDisplay}</span></td>
+            <td style="width: 33.34%;"><span class="label">Issued By:</span><br><span class="value">${issuerDisplay}</span></td>
+          </tr>
+          <tr>
+            <td colspan="3"><span class="label">Status:</span> <span class="value">${status}</span></td>
+          </tr>
+          ${controlCopyInfo ? `
+          <tr>
+            <td colspan="3" style="text-align: center; padding: 10px 6px;">
+              <span class="label" style="font-size: 8.5pt; text-transform: uppercase;">Controlled Copy</span><br>
+              <span class="value" style="font-size: 8pt;">(Printed by ${controlCopyInfo.userFullName} and ${controlCopyInfo.userId}) / ${controlCopyInfo.date}</span>
+            </td>
+          </tr>
+          ` : ''}
         </table>
       </div>
     `;
@@ -246,20 +306,27 @@ export class PDFService {
       const companyHeader = (document.headerInfo || "").toUpperCase();
 
       const drawHeader = (p: any) => {
-        // Document Name and Number at the top
-        p.drawText(`Document Name: ${document.docName.substring(0, 60)} | Document Number: ${document.docNumber.substring(0, 30)}`, { x: 45, y: height - 30, size: 9, font: boldFont });
+        const companyHeader = "NEELIKON FOOD DYES AND CHEMICALS LIMITED";
+        p.drawText(companyHeader, { x: 45, y: height - 30, size: 10, font: boldFont });
 
         // Header Box
-        p.drawRectangle({ x: 40, y: height - 135, width: width - 80, height: 95, borderColor: rgb(0, 0, 0), borderWidth: 1 });
-        p.drawText(companyHeader.substring(0, 70), { x: 50, y: height - 60, size: 11, font: boldFont });
+        p.drawRectangle({ x: 40, y: height - 145, width: width - 80, height: 105, borderColor: rgb(0, 0, 0), borderWidth: 1 });
 
-        p.drawText(`Issue No: ${document.issueNo || '01'} | Revision No: ${document.revisionNo || 0}`, { x: 45, y: height - 85, size: 9, font });
+        const location = (document as any).location || '-';
+        const dateOfIssue = this.formatDate(document.dateOfIssue);
+        const revNo = document.revisionNo || 0;
+        const dateOfRev = this.formatDate((document as any).dateOfRevision);
 
-        const dateOfIssue = document.dateOfIssue ? new Date(document.dateOfIssue).toLocaleDateString() : new Date().toLocaleDateString();
-        const dueDate = document.reviewDueDate ? new Date(document.reviewDueDate).toLocaleDateString() : 'N/A';
+        p.drawText(`Location: ${location} | Date of Issue: ${dateOfIssue}`, { x: 45, y: height - 60, size: 8, font });
+        p.drawText(`Rev. No.: ${revNo} | Date of Rev.: ${dateOfRev}`, { x: 45, y: height - 75, size: 8, font });
 
-        p.drawText(`Date of Issue: ${dateOfIssue} | Due Date: ${dueDate}`, { x: 45, y: height - 100, size: 9, font });
-        p.drawText(`Page: 1 of 1`, { x: 45, y: height - 115, size: 9, font });
+        const dueDate = this.formatDate(document.reviewDueDate);
+        p.drawText(`Due Date of Rev.: ${dueDate} | Page: 1 of 1`, { x: 45, y: height - 95, size: 8, font });
+
+        const deptName = (document as any).departmentNames?.[0] || 'Management Representative';
+        p.drawText(`Dept.: ${deptName.substring(0, 40)}`, { x: 45, y: height - 115, size: 8, font });
+        p.drawText(`Title: ${document.docName.substring(0, 50)}`, { x: 45, y: height - 130, size: 8, font });
+        p.drawText(`Doc. No.: ${document.docNumber}`, { x: width - 200, y: height - 130, size: 8, font });
       };
       drawHeader(page);
       let y = height - 170;

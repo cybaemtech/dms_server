@@ -20,7 +20,7 @@ const documentSchema = z.object({
   docName: z.string().min(1, "Document name is required"),
   docNumber: z.string().min(1, "Document number is required"),
   dateOfIssue: z.string().min(1, "Date of issue is required"),
-  revisionNumber: z.string().min(1, "Revision number is required"),
+  revisionNumber: z.string().optional(), // Auto-calculated
   duePeriodYears: z.string().optional(),
   preparerName: z.string().min(1, "Preparer name is required"),
   location: z.string().min(1, "Location is required"),
@@ -48,7 +48,7 @@ export default function DocumentUploadForm({ onSubmit, defaultPreparerName, init
       docName: initialData?.docName || "",
       docNumber: initialData?.docNumber || "",
       dateOfIssue: new Date().toISOString().split('T')[0],
-      revisionNumber: initialData?.revisionNumber || "0",
+      revisionNumber: "Auto-calculated",
       duePeriodYears: "3",
       preparerName: defaultPreparerName || "",
       location: initialData?.location || "",
@@ -61,44 +61,6 @@ export default function DocumentUploadForm({ onSubmit, defaultPreparerName, init
 
   // Watch for changes in dateOfRevision to calculate reviewDueDate
   const watchedDateOfRevision = form.watch("dateOfRevision");
-
-  // Watch for changes in docNumber to auto-increment revisionNumber
-  const watchedDocNumber = form.watch("docNumber");
-
-  useEffect(() => {
-    const fetchNextRevision = async () => {
-      const trimmedDocNumber = watchedDocNumber?.trim();
-      if (trimmedDocNumber && trimmedDocNumber.length >= 1) {
-        try {
-          const response = await fetch(`/api/documents/${encodeURIComponent(trimmedDocNumber)}/versions`);
-          if (response.ok) {
-            const versions = await response.json();
-            if (Array.isArray(versions) && versions.length > 0) {
-              const revisionNumbers = versions
-                .map((v: any) => typeof v.revisionNo === 'number' ? v.revisionNo : parseInt(v.revisionNo))
-                .filter((rev: any) => !isNaN(rev));
-
-              if (revisionNumbers.length > 0) {
-                const latestRev = Math.max(...revisionNumbers);
-                form.setValue("revisionNumber", (latestRev + 1).toString());
-              } else {
-                form.setValue("revisionNumber", "0");
-              }
-            } else {
-              form.setValue("revisionNumber", "0");
-            }
-          }
-        } catch (error) {
-          console.error("Error fetching versions:", error);
-        }
-      } else {
-        form.setValue("revisionNumber", "0");
-      }
-    };
-
-    const timer = setTimeout(fetchNextRevision, 500);
-    return () => clearTimeout(timer);
-  }, [watchedDocNumber, form]);
 
   useEffect(() => {
     if (watchedDateOfRevision) {
@@ -138,9 +100,16 @@ export default function DocumentUploadForm({ onSubmit, defaultPreparerName, init
               name="revisionNumber"
               render={({ field }) => (
                 <FormItem className="space-y-0.5">
-                  <FormLabel className="text-[10px] uppercase font-bold text-muted-foreground">Revision Number *</FormLabel>
+                  <FormLabel className="text-[10px] uppercase font-bold text-muted-foreground">Revision Number</FormLabel>
                   <FormControl>
-                    <Input type="text" placeholder="0" {...field} data-testid="input-revision-number" className="h-7 text-xs bg-primary/5 border-primary/20 font-mono font-bold text-primary" />
+                    <Input 
+                      type="text" 
+                      placeholder="Auto-calculated" 
+                      {...field} 
+                      disabled 
+                      data-testid="input-revision-number" 
+                      className="h-7 text-xs bg-muted/50 border-muted font-mono text-muted-foreground" 
+                    />
                   </FormControl>
                   <FormMessage className="text-[10px]" />
                 </FormItem>

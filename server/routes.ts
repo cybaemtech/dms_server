@@ -183,6 +183,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         role: creator.role
       } : null;
 
+      // Auto-calculate revision number based on existing documents with same docNumber
+      const existingDocsWithSameNumber = await storage.getDocumentsByDocNumber(req.body.docNumber);
+      const nextRevisionNo = existingDocsWithSameNumber.length > 0 
+        ? Math.max(...existingDocsWithSameNumber.map(d => d.revisionNo || 0)) + 1 
+        : 0;
+
       // Auto-calculate Issue No based on existing documents
       const existingDocs = await storage.getDocumentsByUser(req.body.preparedBy);
       const sameDoc = existingDocs.find(d => d.docNumber === req.body.docNumber);
@@ -190,7 +196,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const documentData = {
         ...req.body,
-        revisionNo: (req.body.revisionNo || req.body.revisionNumber) ? parseInt(req.body.revisionNo || req.body.revisionNumber, 10) : 0,
+        revisionNo: nextRevisionNo,
         duePeriodYears,
         reasonForRevision: req.body.reasonForRevision || undefined,
         issueNo,
@@ -486,6 +492,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } else {
         res.status(500).json({ message: error.message });
       }
+    }
+  });
+
+  app.put("/api/users/:id", async (req, res) => {
+    try {
+      const updatedUser = await storage.updateUser(req.params.id, req.body);
+      if (!updatedUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      res.json(updatedUser);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
     }
   });
 

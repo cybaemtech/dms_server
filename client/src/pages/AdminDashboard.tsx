@@ -177,6 +177,10 @@ const userFormSchema = z.object({
   fullName: z.string().min(1, "Full name is required"),
   role: z.enum(["creator", "approver", "issuer", "admin", "recipient"]),
   masterCopyAccess: z.boolean().default(false),
+  departmentId: z.string().optional(),
+  departmentName: z.string().optional(),
+  departmentCode: z.string().optional(),
+  location: z.string().optional(),
 });
 
 const departmentFormSchema = z.object({
@@ -441,11 +445,19 @@ function DetailedDocumentCard({ doc, onView }: { doc: ApiDocument; onView: (doc:
   );
 }
 
-function UserCard({ user, role, index, onDelete }: { 
-  user: { id: string; fullName: string; username: string }; 
+function UserCard({ user, role, index, onDelete, onEdit }: { 
+  user: { 
+    id: string; 
+    fullName: string; 
+    username: string; 
+    departmentName?: string;
+    departmentCode?: string;
+    location?: string;
+  }; 
   role: string; 
   index: number;
   onDelete: (userId: string) => void;
+  onEdit: (user: any) => void;
 }) {
   const roleColors: Record<string, string> = {
     creator: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
@@ -463,29 +475,51 @@ function UserCard({ user, role, index, onDelete }: {
       className="flex items-center justify-between p-3 rounded-lg bg-muted/30 hover-elevate"
       data-testid={`user-card-${user.id}`}
     >
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 flex-1">
         <Avatar className="h-10 w-10">
           <AvatarFallback className="bg-primary/10 text-primary font-medium">
             {user.fullName.split(' ').map(n => n[0]).join('').toUpperCase()}
           </AvatarFallback>
         </Avatar>
-        <div>
-          <p className="font-medium text-sm">{user.fullName}</p>
-          <p className="text-xs text-muted-foreground">{user.username}</p>
+        <div className="flex-1">
+          <div className="flex items-center gap-2 mb-1">
+            <p className="font-medium text-sm">{user.fullName}</p>
+            <Badge variant="outline" className="text-xs px-1.5 py-0.5">
+              {user.id}
+            </Badge>
+          </div>
+          <p className="text-xs text-muted-foreground mb-1">{user.username}</p>
+          {user.departmentName && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span>{user.departmentName}</span>
+              {user.departmentCode && <span>({user.departmentCode})</span>}
+              {user.location && <span>• {user.location}</span>}
+            </div>
+          )}
         </div>
       </div>
       <div className="flex items-center gap-2">
         <Badge variant="secondary" className={roleColors[role]}>
           {role.charAt(0).toUpperCase() + role.slice(1)}
         </Badge>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => onDelete(user.id)}
-          className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
-        >
-          <Trash2 className="h-4 w-4" />
-        </Button>
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onEdit(user)}
+            className="h-8 w-8 p-0 hover:bg-primary/10"
+          >
+            <Edit className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onDelete(user.id)}
+            className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
     </motion.div>
   );
@@ -496,6 +530,8 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
   const [selectedDoc, setSelectedDoc] = useState<Document | null>(null);
   const [activeTab, setActiveTab] = useState("overview");
   const [userDialogOpen, setUserDialogOpen] = useState(false);
+  const [editUserDialogOpen, setEditUserDialogOpen] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<any>(null);
   const [deptDialogOpen, setDeptDialogOpen] = useState(false);
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
   const { toast } = useToast();
@@ -509,6 +545,25 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
       fullName: "",
       role: "creator",
       masterCopyAccess: false,
+      departmentId: "",
+      departmentName: "",
+      departmentCode: "",
+      location: "",
+    },
+  });
+
+  const editUserForm = useForm<UserFormValues>({
+    resolver: zodResolver(userFormSchema),
+    defaultValues: {
+      username: "",
+      password: "",
+      fullName: "",
+      role: "creator",
+      masterCopyAccess: false,
+      departmentId: "",
+      departmentName: "",
+      departmentCode: "",
+      location: "",
     },
   });
 
@@ -569,6 +624,31 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
     },
   });
 
+  const updateUserMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: UserFormValues }) => {
+      const response = await apiRequest("PUT", `/api/users/${id}`, data);
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "User Updated",
+        description: "User has been updated successfully.",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/stats"] });
+      setEditUserDialogOpen(false);
+      setSelectedUser(null);
+      editUserForm.reset();
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update user.",
+        variant: "destructive",
+      });
+    },
+  });
+
   const createDeptMutation = useMutation({
     mutationFn: async (data: DepartmentFormValues) => {
       const response = await apiRequest("POST", "/api/departments", data);
@@ -607,6 +687,12 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
 
   const onUserSubmit = (data: UserFormValues) => {
     createUserMutation.mutate(data);
+  };
+
+  const onEditUserSubmit = (data: UserFormValues) => {
+    if (selectedUser) {
+      updateUserMutation.mutate({ id: selectedUser.id, data });
+    }
   };
 
   const onDeptSubmit = (data: DepartmentFormValues) => {
@@ -675,6 +761,22 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
       console.log('User confirmed deletion for user:', userId);
       deleteUserMutation.mutate(userId);
     }
+  };
+
+  const handleEditUser = (user: any) => {
+    setSelectedUser(user);
+    editUserForm.reset({
+      fullName: user.fullName,
+      username: user.username,
+      password: "", // Don't populate password for security
+      role: user.role,
+      masterCopyAccess: user.masterCopyAccess || false,
+      departmentId: user.departmentId || "",
+      departmentName: user.departmentName || "",
+      departmentCode: user.departmentCode || "",
+      location: user.location || ""
+    });
+    setEditUserDialogOpen(true);
   };
 
   const handleDeleteDept = (deptId: string) => {
@@ -1360,7 +1462,7 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
                     <ScrollArea className="h-[300px]">
                       <div className="space-y-2">
                         {usersData?.creators.map((user, index) => (
-                          <UserCard key={`creator-${user.id || index}`} user={user} role="creator" index={index} onDelete={handleDeleteUser} />
+                          <UserCard key={`creator-${user.id || index}`} user={user} role="creator" index={index} onDelete={handleDeleteUser} onEdit={handleEditUser} />
                         ))}
                         {(!usersData?.creators || usersData.creators.length === 0) && (
                           <div className="text-center py-8 text-muted-foreground">
@@ -1383,7 +1485,7 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
                     <ScrollArea className="h-[300px]">
                       <div className="space-y-2">
                         {usersData?.approvers.map((user, index) => (
-                          <UserCard key={`approver-${user.id || index}`} user={user} role="approver" index={index} onDelete={handleDeleteUser} />
+                          <UserCard key={`approver-${user.id || index}`} user={user} role="approver" index={index} onDelete={handleDeleteUser} onEdit={handleEditUser} />
                         ))}
                         {(!usersData?.approvers || usersData.approvers.length === 0) && (
                           <div className="text-center py-8 text-muted-foreground">
@@ -1406,7 +1508,7 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
                     <ScrollArea className="h-[300px]">
                       <div className="space-y-2">
                         {usersData?.issuers.map((user, index) => (
-                          <UserCard key={`issuer-${user.id || index}`} user={user} role="issuer" index={index} onDelete={handleDeleteUser} />
+                          <UserCard key={`issuer-${user.id || index}`} user={user} role="issuer" index={index} onDelete={handleDeleteUser} onEdit={handleEditUser} />
                         ))}
                         {(!usersData?.issuers || usersData.issuers.length === 0) && (
                           <div className="text-center py-8 text-muted-foreground">
@@ -1429,7 +1531,7 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
                     <ScrollArea className="h-[300px]">
                       <div className="space-y-2">
                         {usersData?.admins.map((user, index) => (
-                          <UserCard key={`admin-${user.id || index}`} user={user} role="admin" index={index} onDelete={handleDeleteUser} />
+                          <UserCard key={`admin-${user.id || index}`} user={user} role="admin" index={index} onDelete={handleDeleteUser} onEdit={handleEditUser} />
                         ))}
                         {(!usersData?.admins || usersData.admins.length === 0) && (
                           <div className="text-center py-8 text-muted-foreground">
@@ -1624,7 +1726,7 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
 
       {/* Add User Dialog */}
       <Dialog open={userDialogOpen} onOpenChange={setUserDialogOpen}>
-        <DialogContent className="sm:max-w-[500px]">
+        <DialogContent className="sm:max-w-[700px]">
           <DialogHeader>
             <DialogTitle>Add New User</DialogTitle>
             <DialogDescription>
@@ -1632,73 +1734,135 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
             </DialogDescription>
           </DialogHeader>
           <Form {...userForm}>
-            <form onSubmit={userForm.handleSubmit(onUserSubmit)} className="space-y-4">
-              <FormField
-                control={userForm.control}
-                name="fullName"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Full Name</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Enter full name" {...field} data-testid="input-user-fullname" />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={userForm.control}
-                name="username"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Email</FormLabel>
-                    <FormControl>
-                      <Input type="email" placeholder="Enter email address" {...field} data-testid="input-user-email" />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={userForm.control}
-                name="password"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Password</FormLabel>
-                    <FormControl>
-                      <Input type="password" placeholder="Enter password" {...field} data-testid="input-user-password" />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={userForm.control}
-                name="role"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Role</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+            <form onSubmit={userForm.handleSubmit(onUserSubmit)} className="space-y-5">
+              <div className="grid grid-cols-2 gap-6">
+                <FormField
+                  control={userForm.control}
+                  name="fullName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Full Name</FormLabel>
                       <FormControl>
-                        <SelectTrigger data-testid="select-user-role">
-                          <SelectValue placeholder="Select a role" />
+                        <Input placeholder="Enter full name" {...field} data-testid="input-user-fullname" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={userForm.control}
+                  name="username"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Email</FormLabel>
+                      <FormControl>
+                        <Input type="email" placeholder="Enter email address" {...field} data-testid="input-user-email" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+              
+              <div className="grid grid-cols-2 gap-6">
+                <FormField
+                  control={userForm.control}
+                  name="password"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Password</FormLabel>
+                      <FormControl>
+                        <Input type="password" placeholder="Enter password" {...field} data-testid="input-user-password" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={userForm.control}
+                  name="role"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Role</FormLabel>
+                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <FormControl>
+                          <SelectTrigger data-testid="select-user-role">
+                            <SelectValue placeholder="Select a role" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="creator">Creator</SelectItem>
+                          <SelectItem value="approver">Approver</SelectItem>
+                          <SelectItem value="issuer">Issuer</SelectItem>
+                          <SelectItem value="admin">Administrator</SelectItem>
+                          <SelectItem value="recipient">Recipient</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormDescription>
+                        User ID will be auto-generated (e.g., CA-001, AD-001, IA-001)
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              <FormField
+                control={userForm.control}
+                name="departmentId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Department</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger data-testid="select-department">
+                          <SelectValue placeholder="Select department" />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="creator">Creator</SelectItem>
-                        <SelectItem value="approver">Approver</SelectItem>
-                        <SelectItem value="issuer">Issuer</SelectItem>
-                        <SelectItem value="admin">Administrator</SelectItem>
-                        <SelectItem value="recipient">Recipient</SelectItem>
+                        {departmentData.categories.map((category) =>
+                          category.departments.map((dept) => (
+                            <SelectItem key={dept.id} value={dept.id}>
+                              {dept.name} ({category.name})
+                            </SelectItem>
+                          ))
+                        )}
                       </SelectContent>
                     </Select>
-                    <FormDescription>
-                      Choose the role that defines user permissions
-                    </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
               />
+
+              <div className="grid grid-cols-2 gap-6">
+                <FormField
+                  control={userForm.control}
+                  name="departmentCode"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Department Code</FormLabel>
+                      <FormControl>
+                        <Input placeholder="e.g., ENG, QC" {...field} data-testid="input-dept-code" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={userForm.control}
+                  name="location"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Location</FormLabel>
+                      <FormControl>
+                        <Input placeholder="e.g., Building A, Floor 2" {...field} data-testid="input-location" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+              
               <FormField
                 control={userForm.control}
                 name="masterCopyAccess"
@@ -1727,6 +1891,179 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
                 <Button type="submit" disabled={createUserMutation.isPending} data-testid="button-submit-user">
                   {createUserMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                   Create User
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit User Dialog */}
+      <Dialog open={editUserDialogOpen} onOpenChange={setEditUserDialogOpen}>
+        <DialogContent className="sm:max-w-[700px]">
+          <DialogHeader>
+            <DialogTitle>Edit User</DialogTitle>
+            <DialogDescription>
+              Update user account details and permissions.
+            </DialogDescription>
+          </DialogHeader>
+          <Form {...editUserForm}>
+            <form onSubmit={editUserForm.handleSubmit(onEditUserSubmit)} className="space-y-5">
+              <div className="grid grid-cols-2 gap-6">
+                <FormField
+                  control={editUserForm.control}
+                  name="fullName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Full Name</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Enter full name" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={editUserForm.control}
+                  name="username"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Email</FormLabel>
+                      <FormControl>
+                        <Input type="email" placeholder="Enter email address" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+              
+              <div className="grid grid-cols-2 gap-6">
+                <FormField
+                  control={editUserForm.control}
+                  name="password"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Password (Optional)</FormLabel>
+                      <FormControl>
+                        <Input type="password" placeholder="Leave blank to keep current" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={editUserForm.control}
+                  name="role"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Role</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select a role" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="creator">Creator</SelectItem>
+                          <SelectItem value="approver">Approver</SelectItem>
+                          <SelectItem value="issuer">Issuer</SelectItem>
+                          <SelectItem value="admin">Administrator</SelectItem>
+                          <SelectItem value="recipient">Recipient</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormDescription>
+                        User ID: {selectedUser?.id || 'Not assigned'}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              <FormField
+                control={editUserForm.control}
+                name="departmentId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Department</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select department" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {departmentData.categories.map((category) =>
+                          category.departments.map((dept) => (
+                            <SelectItem key={dept.id} value={dept.id}>
+                              {dept.name} ({category.name})
+                            </SelectItem>
+                          ))
+                        )}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <div className="grid grid-cols-2 gap-6">
+                <FormField
+                  control={editUserForm.control}
+                  name="departmentCode"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Department Code</FormLabel>
+                      <FormControl>
+                        <Input placeholder="e.g., ENG, QC" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={editUserForm.control}
+                  name="location"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Location</FormLabel>
+                      <FormControl>
+                        <Input placeholder="e.g., Building A, Floor 2" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+              
+              <FormField
+                control={editUserForm.control}
+                name="masterCopyAccess"
+                render={({ field }) => (
+                  <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                    <div className="space-y-0.5">
+                      <FormLabel className="text-base">Master Copy Access</FormLabel>
+                      <FormDescription>
+                        Allow access to all document versions
+                      </FormDescription>
+                    </div>
+                    <FormControl>
+                      <Switch
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                      />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setEditUserDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={updateUserMutation.isPending}>
+                  {updateUserMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                  Update User
                 </Button>
               </DialogFooter>
             </form>
