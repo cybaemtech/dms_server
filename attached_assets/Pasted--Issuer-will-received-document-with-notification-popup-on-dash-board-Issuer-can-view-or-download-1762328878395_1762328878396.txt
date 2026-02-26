@@ -1,0 +1,37 @@
+	Issuer will received document with notification/popup on dash board
+	Issuer can view or download document in word copy with header and footer information (Sr. no. a-f).  Issuer either approved or decline document. 
+	If decline (add remark in window) it goes to again creator for correction. 
+	If issued (Issued remark add in box and name of issued by in other box). 
+	Issuer also check weather document has to share as per request or make necessary correction then & Final Issued. 
+	In case of revision prevision document can be view to compare with newly prepared document. 
+	Issued Document will be available for creator, approver and other dept. as per share request. 
+	After issued relevant recipient (creator, approver and other dept. or as per matrix) will receive auto notification popup. Now document is available to user in PDF format only.  
+o	Document can printed for filing (SOPs, Responsibilities, List of machinery, etc.)  
+o	Formats can be printed to for recording.
+	Issued document available to user for view and print 
+o	In PDF format, (cannot download)
+o	with Header and footer
+o	footer information is about controlling document 
+	User ID, 
+	Control Copy no. Serial No in continuation as per user id. 
+	Date:  Control copy printed date.  
+	Printed copy shall be traceable and log can be generated as per Doc no. or user ID.   
+
+
+Accessibility and Retrievability 
+	If MR print issued document it shall be Master copy and shall have access to all previous version
+	Creator and approver shall not have access to previous version once revised document is issued, they shall have access to revised document for view and print only.
+
+
+
+Features: 
+	Reminder to review and revision of document in same software.
+	User/ Approver/ Issuer can generate log of issued document with (export to excel) 
+	Validation of DMS
+
+
+Obstacles and way forward
+•	If some formats are need to computer filled and printed then doer can record in computer take print if necessary then it is doer’s responsibility that after printing sign, name and date shall be done. (In this case format will be controlled and same it is document owners responsibility to maintain same content as per control format)
+•	If some formats have to prepared pre-printed register then user will use approve format for printing register, memo book and then physical copies will be issued with stamp from MR. 
+
+•	If some format have same no but different but multiple revision are active like machinery list, log sheet, glass monitoring list, competency chart, product list, PPE matrix???

@@ -1,0 +1,73 @@
+{
+  "categories": [
+    {
+      "id": "production",
+      "name": "Production",
+      "departments": [
+        { "id": "prod-1", "name": "Production" },
+        { "id": "prod-2", "name": "Production Group II" },
+        { "id": "prod-3", "name": "Production Group III" },
+        { "id": "prod-4", "name": "Production Group IV" },
+        { "id": "prod-5", "name": "Production Group V" },
+        { "id": "prod-6", "name": "Production Group VI" }
+      ]
+    },
+    {
+      "id": "manufacturing",
+      "name": "Manufacturing Plants",
+      "departments": [
+        { "id": "plant-a-eg", "name": "Plant A/E&G" },
+        { "id": "plant-b", "name": "Plant B" },
+        { "id": "plant-b1", "name": "Plant B1" },
+        { "id": "plant-cd", "name": "Plant C&D" },
+        { "id": "plant-f", "name": "Plant F" }
+      ]
+    },
+    {
+      "id": "operations",
+      "name": "Operations",
+      "departments": [
+        { "id": "ops-blending", "name": "Blending & Processing" },
+        { "id": "ops-rd", "name": "R&D" },
+        { "id": "ops-qc-lab", "name": "Quality Control Lab" },
+        { "id": "ops-qa", "name": "Quality Assurance" },
+        { "id": "ops-customer", "name": "Customer Support" },
+        { "id": "ops-rm-store", "name": "R.M. Store" },
+        { "id": "ops-engg-store", "name": "Engg. Store" },
+        { "id": "ops-local-purchase", "name": "Local Purchase" },
+        { "id": "ops-packing", "name": "Packing" },
+        { "id": "ops-despatch", "name": "Despatch" }
+      ]
+    },
+    {
+      "id": "administration",
+      "name": "Administration",
+      "departments": [
+        { "id": "admin-etp-wtp", "name": "ETP & WTP" },
+        { "id": "admin-maintenance", "name": "Maintenance" },
+        { "id": "admin-project", "name": "Project" },
+        { "id": "admin-ehs", "name": "EHS" },
+        { "id": "admin-mr-dept", "name": "M.R. Dept." },
+        { "id": "admin-housekeeping", "name": "House-Keeping" },
+        { "id": "admin-hr", "name": "HR Dept." },
+        { "id": "admin-account", "name": "Account Dept." },
+        { "id": "admin-it", "name": "IT Dept." }
+      ]
+    },
+    {
+      "id": "commercial",
+      "name": "Commercial",
+      "departments": [
+        { "id": "comm-planning", "name": "Planning & Despatch" },
+        { "id": "comm-ho", "name": "H.O." },
+        { "id": "comm-export-sales", "name": "Export Sales" },
+        { "id": "comm-domestic-sales", "name": "Domestic Sales" },
+        { "id": "comm-purchase", "name": "Purchase" },
+        { "id": "comm-account", "name": "Account" },
+        { "id": "comm-finance", "name": "Finance" },
+        { "id": "comm-export-doc", "name": "Export Documentation" },
+        { "id": "comm-it", "name": "IT" }
+      ]
+    }
+  ]
+}
