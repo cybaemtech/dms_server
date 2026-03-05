@@ -42,6 +42,8 @@ interface ApiDocument {
   previousVersion?: ApiDocument;
   createdAt?: string;
   updatedAt?: string;
+  location?: string;
+  dateOfRev?: string;
 }
 
 interface Notification {
@@ -237,10 +239,14 @@ export default function IssuerDashboard({ onLogout, userId = "issuer-1", issuerN
       id: doc.id,
       docName: doc.docName,
       docNumber: doc.docNumber,
-      status: "Approved" as const,
+      status: doc.status ? (doc.status.charAt(0).toUpperCase() + doc.status.slice(1)) as any : "Approved",
       dateOfIssue: doc.dateOfIssue ? new Date(doc.dateOfIssue).toISOString().split("T")[0] : "",
       revisionNo: doc.revisionNo,
       preparedBy: doc.preparerName || "Unknown",
+      location: (doc as any).location,
+      dateOfRev: (doc as any).dateOfRev && !isNaN(new Date((doc as any).dateOfRev).getTime()) 
+        ? new Date((doc as any).dateOfRev).toISOString().split('T')[0] 
+        : null
     }));
   };
 
@@ -253,6 +259,10 @@ export default function IssuerDashboard({ onLogout, userId = "issuer-1", issuerN
       dateOfIssue: doc.dateOfIssue ? new Date(doc.dateOfIssue).toISOString().split("T")[0] : "",
       revisionNo: doc.revisionNo,
       preparedBy: doc.preparerName || "Unknown",
+      location: (doc as any).location,
+      dateOfRev: (doc as any).dateOfRev && !isNaN(new Date((doc as any).dateOfRev).getTime()) 
+        ? new Date((doc as any).dateOfRev).toISOString().split('T')[0] 
+        : null
     }));
   };
 
@@ -265,7 +275,7 @@ export default function IssuerDashboard({ onLogout, userId = "issuer-1", issuerN
   return (
     <DashboardLayout
       userRole="Document Issuer (MR)"
-      userName="Issuer User"
+      userName={issuerName}
       userId={userId}
       notificationCount={unreadNotifications}
       onLogout={onLogout}
@@ -330,6 +340,7 @@ export default function IssuerDashboard({ onLogout, userId = "issuer-1", issuerN
               onApprove={handleIssue}
               onDecline={handleDecline}
               showActions={true}
+              showLocation={true}
             />
           ) : (
             <div className="border rounded-lg p-12 text-center">
@@ -346,6 +357,7 @@ export default function IssuerDashboard({ onLogout, userId = "issuer-1", issuerN
               documents={transformedIssuedDocs(issuedDocuments.slice(0, 5))}
               onView={handleViewPDF}
               showActions={true}
+              showLocation={true}
             />
           ) : (
             <div className="border rounded-lg p-12 text-center">
@@ -374,6 +386,7 @@ export default function IssuerDashboard({ onLogout, userId = "issuer-1", issuerN
         type="approve"
         title={`Issue Document: ${selectedDoc?.docName}`}
         approverName={issuerName}
+        nameFieldLabel="Issued By"
       />
 
       <ApprovalDialog
@@ -389,7 +402,6 @@ export default function IssuerDashboard({ onLogout, userId = "issuer-1", issuerN
         open={viewDialogOpen}
         onClose={() => setViewDialogOpen(false)}
         onDownload={viewDoc ? () => handleViewWord(viewDoc as any) : () => { }}
-        currentUserId={userId}
       />
 
       <PDFViewer

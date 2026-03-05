@@ -3,7 +3,6 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import multer from "multer";
 import express, { type Request, Response } from "express";
-import { eq, like, sql } from "drizzle-orm";
 import { pdfService } from "./services/pdf-service";
 import puppeteer from "puppeteer";
 import fs from "fs/promises";
@@ -30,7 +29,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
         id: user.id,
         username: user.username,
         role: user.role,
-        fullName: user.fullName
+        fullName: user.fullName,
+        location: user.location
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/users/:id", async (req, res) => {
+    try {
+      const user = await storage.getUser(req.params.id);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      res.json({
+        id: user.id,
+        username: user.username,
+        role: user.role,
+        fullName: user.fullName,
+        location: user.location
       });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -39,15 +57,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/documents", async (req, res) => {
     try {
-      const { status, userId } = req.query;
+      const { status, userId, recipientId } = req.query;
       let documents;
 
-      if (status) {
+      if (recipientId && status === "issued") {
+        documents = await storage.getUserAccessibleDocuments(recipientId as string);
+      } else if (status) {
         documents = await storage.getDocumentsByStatus(status as string);
       } else if (userId) {
         documents = await storage.getDocumentsByUser(userId as string);
       } else {
-        return res.status(400).json({ message: "Status or userId query parameter is required" });
+        return res.status(400).json({ message: "Status, userId, or recipientId query parameter is required" });
       }
 
       const documentsWithDetails = await Promise.all(
@@ -117,6 +137,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/documents/department/:id", async (req, res) => {
+    try {
+      const { status } = req.query;
+      const documents = await storage.getDocumentsByDepartment(req.params.id, status as string);
+
+      const documentsWithDetails = await Promise.all(
+        documents.map(async (doc) => {
+          const preparer = await storage.getUser(doc.preparedBy);
+          const depts = await storage.getDocumentDepartments(doc.id);
+          return {
+            ...doc,
+            preparerName: preparer?.fullName || "Unknown",
+            departments: depts
+          };
+        })
+      );
+
+      res.json(documentsWithDetails);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   app.get("/api/documents/:id", async (req, res) => {
     try {
       const document = await storage.getDocument(req.params.id);
@@ -140,6 +183,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         departments: depts,
         previousVersion
       });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/documents/next-revision/:docNumber", async (req, res) => {
+    try {
+      const { docNumber } = req.params;
+      const existingDocs = await storage.getDocumentsByDocNumber(docNumber);
+      const nextRevisionNo = existingDocs.length > 0
+        ? Math.max(...existingDocs.map(d => d.revisionNo || 0)) + 1
+        : 1;
+      res.json({ nextRevisionNo });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
@@ -174,6 +230,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let reviewDueDate = new Date(dateOfIssue);
       reviewDueDate.setFullYear(reviewDueDate.getFullYear() + duePeriodYears);
 
+      const dateOfRev = req.body.dateOfRev ? new Date(req.body.dateOfRev) : null;
+      const originalDateOfIssue = req.body.originalDateOfIssue ? new Date(req.body.originalDateOfIssue) : dateOfIssue;
+
       // Get creator data for JSON storage
       const creator = await storage.getUser(req.body.preparedBy);
       const creatorData = creator ? {
@@ -185,9 +244,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Auto-calculate revision number based on existing documents with same docNumber
       const existingDocsWithSameNumber = await storage.getDocumentsByDocNumber(req.body.docNumber);
-      const nextRevisionNo = existingDocsWithSameNumber.length > 0 
-        ? Math.max(...existingDocsWithSameNumber.map(d => d.revisionNo || 0)) + 1 
-        : 0;
+      const nextRevisionNo = existingDocsWithSameNumber.length > 0
+        ? Math.max(...existingDocsWithSameNumber.map(d => d.revisionNo || 0)) + 1
+        : 1;
 
       // Auto-calculate Issue No based on existing documents
       const existingDocs = await storage.getDocumentsByUser(req.body.preparedBy);
@@ -202,9 +261,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         issueNo,
         dateOfIssue,
         reviewDueDate,
+        dateOfRev,
+        originalDateOfIssue,
         headerInfo: (req.body.headerInfo && req.body.headerInfo !== 'undefined') ? req.body.headerInfo : (extracted.headerInfo || ""),
         footerInfo: (req.body.footerInfo && req.body.footerInfo !== 'undefined') ? req.body.footerInfo : (extracted.footerInfo || ""),
         preparerName: req.body.preparerName || creator?.fullName || "",
+        location: req.body.location || creator?.location || null,
         creatorData
       };
 
@@ -240,6 +302,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.patch("/api/documents/:id", async (req, res) => {
+    // Alias PATCH to PUT for documents
+    return (app as any)._router.handle({ method: 'PUT', url: `/api/documents/${req.params.id}`, body: req.body, params: req.params }, res);
+  });
+
   app.put("/api/documents/:id", async (req, res) => {
     try {
       const document = await storage.getDocument(req.params.id);
@@ -247,7 +314,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Document not found" });
       }
 
-      const { docName, docNumber, dateOfIssue, revisionNumber, duePeriodYears, reasonForRevision, location, preparerName, dateOfRevision } = req.body;
+      const { 
+        docName, docNumber, dateOfIssue, revisionNumber, 
+        duePeriodYears, reasonForRevision, location, 
+        preparerName, dateOfRev, reviewDueDate 
+      } = req.body;
 
       const updateData: any = {
         updatedAt: new Date()
@@ -261,16 +332,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (reasonForRevision !== undefined) updateData.reasonForRevision = reasonForRevision;
       if (location !== undefined) updateData.location = location;
       if (preparerName !== undefined) updateData.preparerName = preparerName;
-      if (dateOfRevision !== undefined) updateData.dateOfRevision = new Date(dateOfRevision);
+      if (dateOfRev !== undefined) updateData.dateOfRev = dateOfRev ? new Date(dateOfRev) : null;
+      if (reviewDueDate !== undefined) updateData.reviewDueDate = reviewDueDate ? new Date(reviewDueDate) : null;
 
-      // Recalculate reviewDueDate if necessary
-      const newDateOfIssue = updateData.dateOfIssue || document.dateOfIssue;
-      const newDuePeriod = updateData.duePeriodYears !== undefined ? updateData.duePeriodYears : document.duePeriodYears;
+      // Recalculate reviewDueDate ONLY if it wasn't explicitly provided and other relevant fields changed
+      if (updateData.reviewDueDate === undefined) {
+        const newDateOfIssue = updateData.dateOfIssue || document.dateOfIssue;
+        const newDuePeriod = updateData.duePeriodYears !== undefined ? updateData.duePeriodYears : document.duePeriodYears;
 
-      if (newDateOfIssue && newDuePeriod) {
-        const reviewDueDate = new Date(newDateOfIssue);
-        reviewDueDate.setFullYear(reviewDueDate.getFullYear() + newDuePeriod);
-        updateData.reviewDueDate = reviewDueDate;
+        if (newDateOfIssue && newDuePeriod) {
+          const calculatedReviewDueDate = new Date(newDateOfIssue);
+          calculatedReviewDueDate.setFullYear(calculatedReviewDueDate.getFullYear() + newDuePeriod);
+          updateData.reviewDueDate = calculatedReviewDueDate;
+        }
       }
 
       const updatedDoc = await storage.updateDocument(req.params.id, updateData);
@@ -436,6 +510,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       await storage.markNotificationAsRead(req.params.id);
       res.json({ message: "Notification marked as read" });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/departments/categorized", async (req, res) => {
+    try {
+      const departments = await storage.getDepartments();
+      // Group departments by category
+      const categoryMap: Record<string, { id: string; name: string; departments: { id: string; name: string }[] }> = {};
+
+      for (const dept of departments) {
+        const catId = dept.category || "uncategorized";
+        const catName = dept.categoryName || "Uncategorized";
+
+        if (!categoryMap[catId]) {
+          categoryMap[catId] = { id: catId, name: catName, departments: [] };
+        }
+        categoryMap[catId].departments.push({ id: dept.id, name: dept.name });
+      }
+
+      const categories = Object.values(categoryMap);
+      res.json({ categories });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
@@ -903,7 +1000,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
 
         console.log('Sending PDF response, size:', pdfBuffer.length);
-        
+
         // Security and caching headers
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', 'inline; filename="document.pdf"');
@@ -911,12 +1008,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         res.setHeader('Pragma', 'no-cache');
         res.setHeader('Expires', '0');
         res.setHeader('Content-Length', pdfBuffer.length.toString());
-        
+
         // Content Security Policy for PDF viewing
         res.setHeader('Content-Security-Policy', "default-src 'none'; frame-ancestors 'self'; img-src 'self' data:; style-src 'unsafe-inline';");
         res.setHeader('X-Content-Type-Options', 'nosniff');
         res.setHeader('X-Frame-Options', 'SAMEORIGIN');
-        
+
         res.send(pdfBuffer);
 
       } catch (err: any) {
@@ -985,6 +1082,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } catch (fileError) {
         return res.status(400).json({ message: "Document file not found or inaccessible. Cannot generate PDF." });
       }
+
+      // Enforcement of one-time print rule
+      if (user.role !== 'admin') {
+        const alreadyPrinted = await storage.hasUserPrintedDocument(userId, document.id);
+        if (alreadyPrinted) {
+          return res.status(403).json({
+            message: "Access Denied: This document has already been printed by you. Multiple prints are not allowed as per system policy. Please contact your administrator if you need another copy."
+          });
+        }
+      }
+
       let pdfPath;
       try {
         const controlCopy = await storage.createControlCopy({

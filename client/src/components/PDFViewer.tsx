@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Loader2, Printer, ZoomIn, ZoomOut, ChevronLeft, ChevronRight } from "lucide-react";
+import { Loader2, Printer, ZoomIn, ZoomOut, ChevronLeft, ChevronRight, Download } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -63,53 +63,53 @@ export default function PDFViewer({ documentId, userId, open, onClose, documentN
       setIsLoading(true);
       try {
         console.log(`Loading PDF for document ${documentId} and user ${userId}`);
-        
+
         const response = await fetch(`/api/documents/${documentId}/pdf?userId=${userId}`);
-        
+
         if (!response.ok) {
           const errorText = await response.text();
           console.error('PDF fetch error:', response.status, errorText);
           throw new Error(`Failed to load PDF: ${response.status} - ${errorText}`);
         }
-        
+
         const contentType = response.headers.get('content-type');
         if (!contentType || !contentType.includes('application/pdf')) {
           console.error('Invalid content type:', contentType);
           throw new Error('Invalid response format - expected PDF');
         }
-        
+
         const arrayBuffer = await response.arrayBuffer();
-        
+
         if (arrayBuffer.byteLength === 0) {
           throw new Error('Empty PDF response');
         }
-        
+
         console.log('PDF data loaded, size:', arrayBuffer.byteLength);
-        
+
         // Enhanced PDF.js loading with better error handling
-        const loadingTask = pdfjsLib.getDocument({ 
+        const loadingTask = pdfjsLib.getDocument({
           data: arrayBuffer,
           // Disable worker if it fails to load
           useWorkerFetch: false,
           isEvalSupported: false,
           useSystemFonts: true
         });
-        
+
         loadingTask.onProgress = (progress: any) => {
           console.log(`PDF loading progress: ${progress.loaded}/${progress.total}`);
         };
-        
+
         const pdf = await loadingTask.promise;
-        
+
         setPdfDoc(pdf);
         setTotalPages(pdf.numPages);
         setCurrentPage(1);
-        
+
         console.log('PDF loaded successfully, pages:', pdf.numPages);
-        
+
       } catch (error: any) {
         console.error('PDF loading error:', error);
-        
+
         // Check if it's a worker-related error
         if (error.message && error.message.includes('worker')) {
           console.warn('Worker error detected, trying without worker...');
@@ -118,7 +118,7 @@ export default function PDFViewer({ documentId, userId, open, onClose, documentN
             pdfjsLib.GlobalWorkerOptions.workerSrc = '';
             const response = await fetch(`/api/documents/${documentId}/pdf?userId=${userId}`);
             const arrayBuffer = await response.arrayBuffer();
-            const loadingTask = pdfjsLib.getDocument({ 
+            const loadingTask = pdfjsLib.getDocument({
               data: arrayBuffer,
               disableWorker: true
             });
@@ -132,7 +132,7 @@ export default function PDFViewer({ documentId, userId, open, onClose, documentN
             console.error('Fallback PDF loading also failed:', fallbackError);
           }
         }
-        
+
         toast({
           variant: "destructive",
           title: "PDF Load Failed",
@@ -152,7 +152,7 @@ export default function PDFViewer({ documentId, userId, open, onClose, documentN
     const renderPage = async () => {
       const page = await pdfDoc.getPage(currentPage);
       const viewport = page.getViewport({ scale });
-      
+
       const canvas = canvasRef.current!;
       const context = canvas.getContext('2d')!;
       canvas.height = viewport.height;
@@ -251,6 +251,24 @@ export default function PDFViewer({ documentId, userId, open, onClose, documentN
           </div>
 
           <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => printMutation.mutate()}
+              disabled={printMutation.isPending || isLoading}
+              data-testid="button-download-pdf"
+            >
+              {printMutation.isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                <>
+                  <Download className="w-4 h-4 mr-2" />
+                  Download PDF
+                </>
+              )}
+            </Button>
             <Button
               variant="default"
               onClick={() => printMutation.mutate()}

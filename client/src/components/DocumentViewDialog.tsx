@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Document } from "./DocumentTable";
-import { Download, FileText, Calendar, User, Hash, Clock, AlertCircle, GitCompare } from "lucide-react";
+import { Download, FileText, Calendar, User, Hash, Clock, AlertCircle, GitCompare, Globe, FileQuestion, Timer } from "lucide-react";
 import StatusBadge from "./StatusBadge";
 import WorkflowProgress, { WorkflowStep } from "./WorkflowProgress";
 
@@ -31,6 +31,13 @@ interface DocumentDetails {
   approvalRemarks?: string;
   declineRemarks?: string;
   issueRemarks?: string;
+  location?: string;
+  dateOfRev?: string;
+  reasonForRevision?: string;
+  duePeriodYears?: number;
+  reviewDueDate?: string;
+  issueNo?: string;
+  originalDateOfIssue?: string;
   departments?: Array<{ id: string; name: string }>;
   previousVersion?: DocumentDetails;
 }
@@ -159,7 +166,9 @@ export default function DocumentViewDialog({
                     <Calendar className="w-4 h-4" />
                     Date of Issue
                   </div>
-                  <p className="text-sm font-medium">{document.dateOfIssue}</p>
+                  <p className="text-sm font-medium">
+                    {document.dateOfIssue ? new Date(document.dateOfIssue).toLocaleDateString() : 'N/A'}
+                  </p>
                 </div>
 
                 <div className="space-y-1">
@@ -197,7 +206,83 @@ export default function DocumentViewDialog({
                     <p className="text-sm font-medium">{docDetails.issuerName}</p>
                   </div>
                 )}
+
+                {docDetails?.location && (
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Globe className="w-4 h-4" />
+                      Location
+                    </div>
+                    <p className="text-sm font-medium">{docDetails.location}</p>
+                  </div>
+                )}
+
+                {docDetails?.dateOfRev && (
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Calendar className="w-4 h-4" />
+                      Date of Revision
+                    </div>
+                    <p className="text-sm font-medium">
+                      {new Date(docDetails.dateOfRev).toLocaleDateString()}
+                    </p>
+                  </div>
+                )}
+
+                {docDetails?.originalDateOfIssue && (
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Calendar className="w-4 h-4" />
+                      Original Date of Issue
+                    </div>
+                    <p className="text-sm font-medium">
+                      {new Date(docDetails.originalDateOfIssue).toLocaleDateString()}
+                    </p>
+                  </div>
+                )}
+
+                {docDetails?.reviewDueDate && (
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Timer className="w-4 h-4" />
+                      Review Due Date
+                    </div>
+                    <p className="text-sm font-medium">
+                      {new Date(docDetails.reviewDueDate).toLocaleDateString()}
+                    </p>
+                  </div>
+                )}
+
+                {docDetails?.duePeriodYears !== undefined && docDetails?.duePeriodYears !== null && (
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Clock className="w-4 h-4" />
+                      Due Period
+                    </div>
+                    <p className="text-sm font-medium">{docDetails.duePeriodYears} Years</p>
+                  </div>
+                )}
+
+                {docDetails?.issueNo && (
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Hash className="w-4 h-4" />
+                      Issue Number
+                    </div>
+                    <p className="text-sm font-medium">{docDetails.issueNo}</p>
+                  </div>
+                )}
               </div>
+
+              {docDetails?.reasonForRevision && (
+                <div className="mt-4 pt-4 border-t">
+                  <div className="flex items-center gap-2 mb-2">
+                    <FileQuestion className="w-4 h-4 text-muted-foreground" />
+                    <h4 className="text-sm font-medium text-muted-foreground">Reason for Revision</h4>
+                  </div>
+                  <p className="text-sm bg-muted/30 p-3 rounded-md italic">"{docDetails.reasonForRevision}"</p>
+                </div>
+              )}
 
               {docDetails?.departments && docDetails.departments.length > 0 && (
                 <div className="mt-4 pt-4 border-t">

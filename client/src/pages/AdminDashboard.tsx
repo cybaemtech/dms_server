@@ -84,8 +84,7 @@ import {
   Cell
 } from "recharts";
 
-// Import department data
-import departmentData from "../../../shared/departmentData.json";
+// Department data fetched from SQL Server API (no JSON import)
 
 interface AdminDashboardProps {
   onLogout?: () => void;
@@ -600,6 +599,19 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
     refetchInterval: 30000,
   });
 
+  // Fetch categorized department data from SQL Server (replaces departmentData.json)
+  const { data: departmentData } = useQuery<{ categories: Array<{ id: string; name: string; departments: Array<{ id: string; name: string }> }> }>({
+    queryKey: ["/api/departments/categorized"],
+    queryFn: async () => {
+      const response = await apiRequest("GET", "/api/departments/categorized");
+      return response.json();
+    },
+    refetchInterval: 30000,
+  });
+
+  // Fallback to empty categories if not loaded yet
+  const departmentCategories = departmentData?.categories || [];
+
   const createUserMutation = useMutation({
     mutationFn: async (data: UserFormValues) => {
       const response = await apiRequest("POST", "/api/users", data);
@@ -661,6 +673,7 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
       });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/stats"] });
       queryClient.invalidateQueries({ queryKey: ["/api/departments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/departments/categorized"] });
       setDeptDialogOpen(false);
       deptForm.reset();
     },
@@ -745,6 +758,7 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
       });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/stats"] });
       queryClient.invalidateQueries({ queryKey: ["/api/departments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/departments/categorized"] });
     },
     onError: (error: Error, variables) => {
       console.error('Delete department error:', error, 'for department:', variables);
@@ -1562,7 +1576,7 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
                     </div>
                     <div className="flex items-center gap-2">
                       <Badge variant="outline">
-                        {departmentData.categories.reduce((total, cat) => total + cat.departments.length, 0)} Total
+                        {departmentCategories.reduce((total, cat) => total + cat.departments.length, 0)} Total
                       </Badge>
                       <Button onClick={() => setDeptDialogOpen(true)} data-testid="button-add-dept-inline">
                         <Plus className="w-4 h-4 mr-2" />
@@ -1571,7 +1585,7 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
                     </div>
                   </div>
                   
-                  {departmentData.categories.map((category, categoryIndex) => {
+                  {departmentCategories.map((category, categoryIndex) => {
                     const isExpanded = expandedCategories[category.id] ?? false;
                     const displayedDepartments = isExpanded ? category.departments : category.departments.slice(0, 3);
                     
@@ -1820,7 +1834,7 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {departmentData.categories.map((category) =>
+                        {departmentCategories.map((category) =>
                           category.departments.map((dept) => (
                             <SelectItem key={dept.id} value={dept.id}>
                               {dept.name} ({category.name})
@@ -1994,7 +2008,7 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {departmentData.categories.map((category) =>
+                        {departmentCategories.map((category) =>
                           category.departments.map((dept) => (
                             <SelectItem key={dept.id} value={dept.id}>
                               {dept.name} ({category.name})

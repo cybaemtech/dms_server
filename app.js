@@ -1,9 +1,9 @@
-// cPanel Node.js entry point
-// This file should be set as the "Application Startup File" in cPanel's "Setup Node.js App"
+// IIS Node.js entry point - runs from inside dist folder on the server
+// Start the Express server which serves both API and static files
 
-import('./dist/index.js')
+import('./index.js')
     .then(() => {
-        console.log('Server started successfully');
+        console.log('DMS Server started successfully');
     })
     .catch((err) => {
         console.error('Failed to start server:', err);

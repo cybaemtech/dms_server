@@ -27,7 +27,7 @@ const loginSchema = z.object({
 type LoginFormValues = z.infer<typeof loginSchema>;
 
 interface LoginPageProps {
-  onLogin?: (data: LoginFormValues) => void;
+  onLogin?: (data: LoginFormValues) => Promise<boolean> | void;
 }
 
 export default function LoginPage({ onLogin }: LoginPageProps) {
@@ -61,29 +61,28 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
   const handleSubmit = async (data: LoginFormValues) => {
     setIsLoading(true);
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 100));
-      console.log("Login attempt:", data);
+      const success = await onLogin?.(data);
 
-      // Trigger colorful transition
-      setIsLoggingIn(true);
-
-      toast.success('Access Granted! Establishing Secure Connection...', {
-        icon: '🔐',
-        style: {
-          borderRadius: '12px',
-          background: '#0F172A',
-          color: '#F8FAFC',
-        },
-      });
-
-      // Wait for colorful transition - adjusted for total 1s feel
-      await new Promise(resolve => setTimeout(resolve, 400));
-      onLogin?.(data);
+      if (success) {
+        // Trigger colorful transition for success
+        setIsLoggingIn(true);
+        toast.success('Access Granted! Establishing Secure Connection...', {
+          icon: '🔐',
+          style: {
+            borderRadius: '12px',
+            background: '#0F172A',
+            color: '#F8FAFC',
+          },
+        });
+        // We don't need to setIsLoading(false) if we are navigating away
+      } else {
+        // Login failed (notifications are handled in parent)
+        setIsLoggingIn(false);
+        setIsLoading(false);
+      }
     } catch (error) {
-      toast.error('Login failed. Please check your credentials.');
+      toast.error('An unexpected error occurred. Please try again.');
       setIsLoggingIn(false);
-    } finally {
       setIsLoading(false);
     }
   };
@@ -189,6 +188,7 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
             One World One Quality
           </motion.div>
           <Button
+            type="button"
             variant="outline"
             size="icon"
             onClick={toggleTheme}
@@ -348,9 +348,9 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
                 </div>
 
                 <div className="flex justify-center gap-3 mt-4">
-                  <Button variant="outline" size="icon" className="rounded-full w-9 h-9 border-slate-200 dark:border-slate-800 hover:bg-white group"><SiGoogle className="w-3.5 h-3.5 text-slate-400 group-hover:text-red-500 transition-colors" /></Button>
-                  <Button variant="outline" size="icon" className="rounded-full w-9 h-9 border-slate-200 dark:border-slate-800 hover:bg-white group"><FaMicrosoft className="w-3.5 h-3.5 text-slate-400 group-hover:text-blue-500 transition-colors" /></Button>
-                  <Button variant="outline" size="icon" className="rounded-full w-9 h-9 border-slate-200 dark:border-slate-800 hover:bg-white group"><SiFacebook className="w-3.5 h-3.5 text-slate-400 group-hover:text-blue-700 transition-colors" /></Button>
+                  <Button type="button" variant="outline" size="icon" className="rounded-full w-9 h-9 border-slate-200 dark:border-slate-800 hover:bg-white group"><SiGoogle className="w-3.5 h-3.5 text-slate-400 group-hover:text-red-500 transition-colors" /></Button>
+                  <Button type="button" variant="outline" size="icon" className="rounded-full w-9 h-9 border-slate-200 dark:border-slate-800 hover:bg-white group"><FaMicrosoft className="w-3.5 h-3.5 text-slate-400 group-hover:text-blue-500 transition-colors" /></Button>
+                  <Button type="button" variant="outline" size="icon" className="rounded-full w-9 h-9 border-slate-200 dark:border-slate-800 hover:bg-white group"><SiFacebook className="w-3.5 h-3.5 text-slate-400 group-hover:text-blue-700 transition-colors" /></Button>
                 </div>
               </div>
             </Card>

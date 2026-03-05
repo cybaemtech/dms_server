@@ -35,10 +35,11 @@ type DocumentFormValues = z.infer<typeof documentSchema>;
 interface DocumentUploadFormProps {
   onSubmit?: (data: DocumentFormValues & { file?: File }) => void;
   defaultPreparerName?: string;
+  defaultLocation?: string;
   initialData?: any;
 }
 
-export default function DocumentUploadForm({ onSubmit, defaultPreparerName, initialData }: DocumentUploadFormProps) {
+export default function DocumentUploadForm({ onSubmit, defaultPreparerName, defaultLocation, initialData }: DocumentUploadFormProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [fileError, setFileError] = useState<string>("");
 
@@ -51,13 +52,35 @@ export default function DocumentUploadForm({ onSubmit, defaultPreparerName, init
       revisionNumber: "Auto-calculated",
       duePeriodYears: "3",
       preparerName: defaultPreparerName || "",
-      location: initialData?.location || "",
+      location: initialData?.location || defaultLocation || "",
       reasonForRevision: "",
       previousVersionId: initialData?.previousVersionId || "",
       dateOfRevision: new Date().toISOString().split('T')[0],
       reviewDueDate: "",
     },
   });
+
+  // Watch for changes in docNumber to fetch next revision
+  const watchedDocNumber = form.watch("docNumber");
+
+  useEffect(() => {
+    const fetchNextRevision = async () => {
+      if (watchedDocNumber && watchedDocNumber.length > 2) {
+        try {
+          const response = await fetch(`/api/documents/next-revision/${encodeURIComponent(watchedDocNumber)}`);
+          if (response.ok) {
+            const data = await response.json();
+            form.setValue("revisionNumber", data.nextRevisionNo.toString());
+          }
+        } catch (error) {
+          console.error("Error fetching next revision:", error);
+        }
+      }
+    };
+
+    const timer = setTimeout(fetchNextRevision, 500); // Debounce
+    return () => clearTimeout(timer);
+  }, [watchedDocNumber, form]);
 
   // Watch for changes in dateOfRevision to calculate reviewDueDate
   const watchedDateOfRevision = form.watch("dateOfRevision");
@@ -73,6 +96,16 @@ export default function DocumentUploadForm({ onSubmit, defaultPreparerName, init
     }
   }, [watchedDateOfRevision, form]);
 
+  useEffect(() => {
+    if (defaultLocation && !initialData?.location) {
+      // Use short delay to ensure form is fully ready
+      const timer = setTimeout(() => {
+        form.setValue("location", defaultLocation, { shouldValidate: true });
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [defaultLocation, form, initialData]);
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       setSelectedFile(e.target.files[0]);
@@ -85,6 +118,7 @@ export default function DocumentUploadForm({ onSubmit, defaultPreparerName, init
       setFileError("Word document is required for document content.");
       return;
     }
+    // Convert date strings for backend if needed
     onSubmit?.({ ...data, file: selectedFile });
     console.log("Form submitted:", { ...data, file: selectedFile?.name });
   };
@@ -102,13 +136,13 @@ export default function DocumentUploadForm({ onSubmit, defaultPreparerName, init
                 <FormItem className="space-y-0.5">
                   <FormLabel className="text-[10px] uppercase font-bold text-muted-foreground">Revision Number</FormLabel>
                   <FormControl>
-                    <Input 
-                      type="text" 
-                      placeholder="Auto-calculated" 
-                      {...field} 
-                      disabled 
-                      data-testid="input-revision-number" 
-                      className="h-7 text-xs bg-muted/50 border-muted font-mono text-muted-foreground" 
+                    <Input
+                      type="text"
+                      placeholder="Auto-calculated"
+                      {...field}
+                      disabled
+                      data-testid="input-revision-number"
+                      className="h-7 text-xs bg-muted/50 border-muted font-mono text-muted-foreground"
                     />
                   </FormControl>
                   <FormMessage className="text-[10px]" />
@@ -195,7 +229,7 @@ export default function DocumentUploadForm({ onSubmit, defaultPreparerName, init
                 <FormItem className="space-y-0.5">
                   <FormLabel className="text-xs">Location *</FormLabel>
                   <FormControl>
-                    <Input placeholder="e.g., Factory A" {...field} data-testid="input-location" className="h-8 text-sm" />
+                    <Input placeholder="e.g., Factory A" {...field} data-testid="input-location" className="h-8 text-sm bg-muted/50 cursor-default" readOnly />
                   </FormControl>
                   <FormMessage className="text-[10px]" />
                 </FormItem>

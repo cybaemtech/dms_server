@@ -36,6 +36,8 @@ interface ApiDocument {
   approvedAt?: string;
   issuedAt?: string;
   createdAt?: string;
+  location?: string;
+  dateOfRev?: string;
 }
 
 interface Notification {
@@ -261,6 +263,8 @@ export default function ApproverDashboard({
     dateOfIssue: doc.dateOfIssue ? new Date(doc.dateOfIssue).toISOString().split('T')[0] : '',
     revisionNo: doc.revisionNo,
     preparedBy: doc.preparerName || 'Unknown',
+    location: doc.location,
+    dateOfRev: doc.dateOfRev ? new Date(doc.dateOfRev).toISOString().split('T')[0] : null
   }));
 
   const transformedIssuedDocs: Document[] = issuedDocuments.map(doc => ({
@@ -271,6 +275,8 @@ export default function ApproverDashboard({
     dateOfIssue: doc.dateOfIssue ? new Date(doc.dateOfIssue).toISOString().split('T')[0] : '',
     revisionNo: doc.revisionNo,
     preparedBy: doc.preparerName || 'Unknown',
+    location: doc.location,
+    dateOfRev: doc.dateOfRev ? new Date(doc.dateOfRev).toISOString().split('T')[0] : null
   }));
 
   return (
@@ -333,6 +339,7 @@ export default function ApproverDashboard({
               onDownload={handleDownload}
               onApprove={handleApprove}
               onDecline={handleDecline}
+              showLocation={true}
             />
           )}
         </Card>
@@ -344,6 +351,7 @@ export default function ApproverDashboard({
               documents={transformedIssuedDocs.slice(0, 10)}
               onView={handleViewPDF}
               showActions={true}
+              showLocation={true}
             />
           ) : (
             <div className="border rounded-lg p-12 text-center">
@@ -382,6 +390,7 @@ export default function ApproverDashboard({
         type="approve"
         title={`Approve: ${selectedDoc?.docName}`}
         approverName={approverName}
+        nameFieldLabel="Approved By"
       />
 
       <ApprovalDialog
@@ -405,7 +414,6 @@ export default function ApproverDashboard({
         open={viewDialogOpen}
         onClose={() => setViewDialogOpen(false)}
         onDownload={viewDoc ? () => handleViewWord(viewDoc) : () => { }}
-        currentUserId={userId}
       />
 
       <WordDocumentViewer

@@ -60,6 +60,8 @@ export default function NotificationPanel({ userId }: NotificationPanelProps) {
       case "approved_document":
       case "document_status_update":
       case "document_declined":
+      case "document_issued":
+      case "revision_due":
         return <FileText className="w-4 h-4" />;
       default:
         return <Bell className="w-4 h-4" />;
@@ -73,7 +75,10 @@ export default function NotificationPanel({ userId }: NotificationPanelProps) {
       case "document_declined":
         return "text-red-600 bg-red-50 dark:bg-red-950/20";
       case "new_document":
+      case "document_issued":
         return "text-blue-600 bg-blue-50 dark:bg-blue-950/20";
+      case "revision_due":
+        return "text-amber-600 bg-amber-50 dark:bg-amber-950/20";
       default:
         return "text-muted-foreground bg-muted/30";
     }

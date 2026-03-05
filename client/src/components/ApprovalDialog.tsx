@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -12,7 +13,6 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { ChevronDown, ChevronRight, Search, X } from "lucide-react";
-import departmentData from "../../../shared/departmentData.json";
 
 interface DepartmentItem {
   id: string;
@@ -51,12 +51,22 @@ export default function ApprovalDialog({
   const [approverName, setApproverName] = useState(initialApproverName);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [expandedCategories, setExpandedCategories] = useState<string[]>(
-    departmentData.categories.map((cat) => cat.id)
-  );
+  const [expandedCategories, setExpandedCategories] = useState<string[]>([]);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const categories: DepartmentCategory[] = departmentData.categories;
+  // Fetch departments from SQL Server API
+  const { data: departmentData } = useQuery<{ categories: DepartmentCategory[] }>({
+    queryKey: ["/api/departments/categorized"],
+  });
+
+  const categories: DepartmentCategory[] = departmentData?.categories || [];
+
+  // Expand all categories when data loads
+  useEffect(() => {
+    if (categories.length > 0 && expandedCategories.length === 0) {
+      setExpandedCategories(categories.map((cat) => cat.id));
+    }
+  }, [categories]);
 
   useEffect(() => {
     setApproverName(initialApproverName);
@@ -99,7 +109,7 @@ export default function ApprovalDialog({
   const handleSelectAllCategory = (category: DepartmentCategory) => {
     const categoryDeptIds = category.departments.map((d) => d.id);
     const allSelected = categoryDeptIds.every((id) => selectedDepartments.includes(id));
-    
+
     if (allSelected) {
       setSelectedDepartments((prev) => prev.filter((id) => !categoryDeptIds.includes(id)));
     } else {
@@ -175,13 +185,13 @@ export default function ApprovalDialog({
         <div className="space-y-4 py-4">
           {type === "approve" && (
             <div className="space-y-2">
-              <Label htmlFor="approverName">{nameFieldLabel} *</Label>
+              <Label htmlFor="approverName">{nameFieldLabel}</Label>
               <Input
                 id="approverName"
-                placeholder="Enter your name"
                 value={approverName}
-                onChange={(e) => setApproverName(e.target.value)}
-                className="bg-muted"
+                readOnly
+                disabled
+                className="bg-muted cursor-not-allowed"
                 data-testid="input-approver-name"
               />
             </div>
@@ -207,7 +217,7 @@ export default function ApprovalDialog({
           {type === "approve" && (
             <div className="space-y-3">
               <Label>Share with Departments (Optional)</Label>
-              
+
               <div className="relative" ref={dropdownRef}>
                 <Button
                   type="button"

@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
@@ -60,10 +61,11 @@ app.use((req, res, next) => {
       const puppeteer = await import('puppeteer');
       const browser = await puppeteer.default.launch({
         headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
       });
       await browser.close();
-      console.log('Puppeteer test successful');
+      console.log('Puppeteer test successful - Chrome found');
     } catch (puppeteerError) {
       console.warn('Puppeteer test failed:', puppeteerError);
     }

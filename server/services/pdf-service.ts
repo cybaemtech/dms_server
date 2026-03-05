@@ -56,8 +56,21 @@ export class PDFService {
           "p[style-name='Heading 1'] => h1:fresh",
           "p[style-name='Heading 2'] => h2:fresh",
           "p[style-name='Heading 3'] => h3:fresh",
-          "table => table.document-table:fresh"
-        ]
+          "p[style-name='List Paragraph'] => p.list-paragraph:fresh",
+          "p[style-name='Normal'] => p:fresh",
+          "r[style-name='Strong'] => strong:fresh",
+          "r[style-name='Emphasis'] => em:fresh",
+          "table => table.document-table:fresh",
+          "b => strong",
+          "i => em",
+          "u => span.underline"
+        ],
+        includeDefaultStyleMap: true,
+        convertImage: mammoth.images.imgElement(function(image: any) {
+          return image.read("base64").then(function(imageBuffer: string) {
+            return { src: "data:" + image.contentType + ";base64," + imageBuffer };
+          });
+        })
       };
 
       const result = await mammoth.convertToHtml({ buffer: wordBuffer }, options);
@@ -95,24 +108,10 @@ export class PDFService {
       const pdfBuffer = await page.pdf({
         format: 'A4',
         printBackground: true,
-        margin: { top: '160px', bottom: '180px', left: '45px', right: '45px' },
+        margin: { top: '160px', bottom: '120px', left: '45px', right: '45px' },
         displayHeaderFooter: true,
         headerTemplate: headerHtml,
-        footerTemplate: `
-          <div style="width: 100%; font-size: 8pt; font-family: 'Segoe UI', Arial, sans-serif;">
-            <script>
-              (function() {
-                const pageNum = document.querySelector('.pageNumber');
-                const totalPages = document.querySelector('.totalPages');
-                if (pageNum && totalPages && pageNum.textContent !== totalPages.textContent) {
-                  document.body.style.display = 'none';
-                }
-              })();
-            </script>
-            ${footerHtml}
-          </div>
-        `,
-        preferCSSPageSize: true
+        footerTemplate: footerHtml,
       });
 
       await fs.writeFile(pdfPath, pdfBuffer);
@@ -128,42 +127,61 @@ export class PDFService {
   }
 
   private wrapWithHeavyDutyTheme(document: Document, body: string, controlCopyInfo?: ControlCopyInfo): string {
-    const issueNo = document.issueNo || '01';
-    const revNo = document.revisionNo ?? 0;
-    const revDate = document.dateOfIssue ? new Date(document.dateOfIssue).toLocaleDateString('en-GB') : new Date().toLocaleDateString('en-GB');
-    const dueDate = document.reviewDueDate ? new Date(document.reviewDueDate).toLocaleDateString('en-GB') : 'N/A';
-    const depts = (document as any).departmentNames || [];
-    const deptString = depts.length > 0 ? depts.join(', ') : '';
-
-    const preparer = (document as any).preparerName || (document as any).creatorData?.fullName || '';
-    const approver = (document as any).approverName || (document as any).approverData?.fullName || 'Pending';
-    const issuer = (document as any).issuerName || (document as any).issuerData?.fullName || 'Pending';
-    const reason = document.reasonForRevision || '';
-
-    // Use stored header/footer info
-    const companyHeader = document.headerInfo || "";
-    const extraFooter = document.footerInfo || "";
 
     return `
 <!DOCTYPE html>
 <html>
 <head>
   <style>
-    @page { size: A4; margin: 160px 45px 160px 45px; }
+    @page { size: A4; margin: 160px 45px 120px 45px; }
     body { font-family: 'Segoe UI', Calibri, Arial, sans-serif; margin: 0; padding: 0; color: black; background: white; }
-    .content-body { font-size: 11pt; line-height: 1.5; color: black; padding-top: 10px; }
-    .content-body h1 { text-align: center; text-decoration: underline; font-size: 14pt; margin-bottom: 25px; font-weight: bold; }
-    .document-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-    .document-table td, .document-table th { border: 1pt solid black; padding: 8px; }
+    
+    /* Content body - preserve Word formatting */
+    .content-body { font-size: 11pt; line-height: 1.6; color: black; padding-top: 5px; }
+    .content-body h1 { font-size: 14pt; margin: 15px 0 10px 0; font-weight: bold; }
+    .content-body h2 { font-size: 13pt; margin: 12px 0 8px 0; font-weight: bold; }
+    .content-body h3 { font-size: 12pt; margin: 10px 0 6px 0; font-weight: bold; }
+    .content-body p { margin: 4px 0; text-align: justify; }
+    .content-body p:empty { margin: 8px 0; }
+    
+    /* Preserve list formatting */
+    .content-body ol, .content-body ul { margin: 6px 0 6px 20px; padding-left: 15px; }
+    .content-body li { margin: 3px 0; line-height: 1.5; }
+    .content-body p.list-paragraph { margin-left: 20px; }
+    
+    /* Preserve inline formatting */
+    .content-body strong, .content-body b { font-weight: bold; }
+    .content-body em, .content-body i { font-style: italic; }
+    .content-body span.underline { text-decoration: underline; }
+    .content-body sub { vertical-align: sub; font-size: 0.8em; }
+    .content-body sup { vertical-align: super; font-size: 0.8em; }
+    
+    /* Preserve table formatting from Word */
+    .document-table { width: 100%; border-collapse: collapse; margin: 10px 0; page-break-inside: auto; }
+    .document-table tr { page-break-inside: avoid; page-break-after: auto; }
+    .document-table td, .document-table th { 
+      border: 1pt solid black; 
+      padding: 5px 8px; 
+      font-size: 10pt; 
+      line-height: 1.4;
+      vertical-align: top;
+      text-align: left;
+    }
+    .document-table th { font-weight: bold; background-color: #f2f2f2; }
+    
+    /* Preserve images */
+    .content-body img { max-width: 100%; height: auto; margin: 8px 0; }
+    
+    /* Preserve any inline styles from Word */
+    .content-body [style] { /* allow inline styles to pass through */ }
   </style>
 </head>
 <body>
   <div class="content-body">
-    <h1>${document.docName.toUpperCase()}</h1>
     <div class="document-content">
       ${body}
     </div>
-    ${document.content ? `<div style="margin-top: 20px;">${document.content}</div>` : ''}
+    ${document.content ? `<div style="margin-top: 15px;">${document.content}</div>` : ''}
   </div>
 </body>
 </html>`;
@@ -178,62 +196,74 @@ export class PDFService {
 
   private getHeaderTemplate(document: Document): string {
     const deptName = (document as any).departmentNames?.[0] || 'Management Representative';
+    const location = (document as any).location || '';
+    const revNo = document.revisionNo !== undefined ? String(document.revisionNo).padStart(2, '0') : '00';
+    const dateOfIssue = this.formatDate(document.originalDateOfIssue || document.dateOfIssue);
+    const dateOfRev = this.formatDate(document.dateOfRev || (document.revisionNo !== undefined && document.revisionNo > 0 ? document.dateOfIssue : null));
+    const dueDate = this.formatDate(document.reviewDueDate);
 
     return `
       <style>
-        .header-container { margin: 0 45px; font-family: 'Segoe UI', Arial, sans-serif; }
-        .header-table { width: 100%; border-collapse: collapse; border: 1pt solid #000; table-layout: fixed; }
-        .header-table td { 
-          border: 1pt solid #000; 
-          padding: 4px 6px; 
-          vertical-align: top; 
-          font-size: 7.5pt; 
-          word-wrap: break-word;
+        .header-container {
+          margin: 0 45px;
+          font-family: 'Segoe UI', Arial, sans-serif;
+          width: calc(100% - 90px);
+        }
+        .header-table {
+          width: 100%;
+          border-collapse: collapse;
+          border: 1.5pt solid #000;
+        }
+        .header-table td {
+          border: 1pt solid #000;
+          padding: 4px 6px;
+          vertical-align: middle;
+          font-size: 7.5pt;
+          line-height: 1.3;
           overflow: hidden;
+          text-overflow: ellipsis;
         }
-        .company-name { 
-          text-align: center; 
-          font-weight: bold; 
-          font-size: 10pt; 
-          text-transform: uppercase; 
-          padding: 10px !important; 
+        .company-name {
+          text-align: center;
+          font-weight: bold;
+          font-size: 10pt;
+          text-transform: uppercase;
+          padding: 6px 6px !important;
+          border-bottom: 1.5pt solid #000 !important;
+          letter-spacing: 0.5px;
+          white-space: normal;
         }
-        .label { font-weight: bold; }
-        .value { font-weight: normal; }
+        .label { font-weight: bold; color: #000; }
+        .value { font-weight: normal; color: #000; }
+        .row-meta td { border-top: 1pt solid #000; }
+        .row-dept td { border-top: 1.5pt solid #000; }
       </style>
       <div class="header-container">
         <table class="header-table">
+          <colgroup>
+            <col style="width: 15%;">
+            <col style="width: 20%;">
+            <col style="width: 12%;">
+            <col style="width: 30%;">
+            <col style="width: 13%;">
+          </colgroup>
           <tr>
-            <td colspan="20" class="company-name">NEELIKON FOOD DYES AND CHEMICALS LIMITED</td>
+            <td colspan="5" class="company-name">NEELIKON FOOD DYES AND CHEMICALS LIMITED</td>
           </tr>
-          <tr>
-            <td colspan="3" style="width: 15%;">
-              <span class="label">Location:</span> <span class="value">${(document as any).location || '-'}</span>
+          <tr class="row-meta">
+            <td><span class="label">Location:</span> <span class="value">${location}</span></td>
+            <td><span class="label">Date of Issue:</span> <span class="value">${dateOfIssue}</span></td>
+            <td><span class="label">Rev. No.:</span> <span class="value">${revNo}</span></td>
+            <td style="white-space: normal; line-height: 1.5;">
+              <span class="label">Date of Rev.</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="label">:</span> <span class="value">${dateOfRev}</span><br>
+              <span class="label">Due Date of Rev.:</span> <span class="value">${dueDate}</span>
             </td>
-            <td colspan="5" style="width: 25%;">
-              <span class="label">Date of Issue:</span> <span class="value">${this.formatDate(document.originalDateOfIssue || document.dateOfIssue)}</span>
-            </td>
-            <td colspan="3" style="width: 15%;">
-              <span class="label">Rev. No.:</span> <span class="value">${document.revisionNo !== undefined ? String(document.revisionNo).padStart(2, '0') : '00'}</span>
-            </td>
-            <td colspan="6" style="width: 30%;">
-              <span class="label">Date of Rev. :</span> <span class="value">${this.formatDate((document as any).dateOfRevision || (document.revisionNo !== undefined && document.revisionNo > 0 ? document.dateOfIssue : null))}</span><br>
-              <span class="label">Due Date of Rev.:</span> <span class="value">${this.formatDate(document.reviewDueDate)}</span>
-            </td>
-            <td colspan="3" style="width: 15%;">
-              <span class="label">Page</span> <span class="pageNumber"></span> of <span class="totalPages"></span>
-            </td>
+            <td><span class="label">Page</span> <span class="pageNumber"></span> <span class="label">of</span> <span class="totalPages"></span></td>
           </tr>
-          <tr>
-            <td colspan="5" style="width: 25%;">
-              <span class="label">Dept.:</span> <span class="value">${deptName}</span>
-            </td>
-            <td colspan="12" style="width: 60%;">
-              <span class="label">Title:</span> <span class="value">${document.docName}</span>
-            </td>
-            <td colspan="3" style="width: 15%;">
-              <span class="label">Doc. No.:</span> <span class="value">${document.docNumber}</span>
-            </td>
+          <tr class="row-dept">
+            <td><span class="label">Dept.:</span> <span class="value">${deptName}</span></td>
+            <td colspan="2" style="white-space: normal;"><span class="label">Title:</span> <span class="value">${document.docName}</span></td>
+            <td colspan="2"><span class="label">Doc. No.:</span> <span class="value">${document.docNumber}</span></td>
           </tr>
         </table>
       </div>
@@ -248,38 +278,60 @@ export class PDFService {
     const approverId = document.approvedBy || '-';
     const issuerId = document.issuedBy || '-';
 
-    const preparerDisplay = `${preparer} (${preparerId})`;
-    const approverDisplay = (approver === 'Pending' || !document.approvedBy) ? 'Pending' : `${approver} (${approverId})`;
-    const issuerDisplay = (issuer === 'Pending' || !document.issuedBy) ? 'Pending' : `${issuer} (${issuerId})`;
-
     const status = document.status ? document.status.toUpperCase() : 'PENDING';
+
+    let statusContent = `<span class="footer-label">Status</span><span class="footer-value">${status}</span>`;
+    if (controlCopyInfo) {
+      statusContent = `<span class="footer-label">Status</span><span class="footer-value">Controlled Copy</span><br><span class="footer-value" style="font-size: 6.5pt;">(Printed by ${controlCopyInfo.userFullName} and ${controlCopyInfo.userId}) / ${controlCopyInfo.date}</span>`;
+    }
 
     return `
       <style>
-        .footer-container { margin: 0 45px; font-family: 'Segoe UI', Arial, sans-serif; width: 100%; border-top: 1pt solid #000; padding-top: 5px; }
-        .footer-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-        .footer-table td { font-size: 7.5pt; padding: 4px 6px; vertical-align: top; border: 1pt solid #000; }
-        .label { font-weight: bold; }
-        .value { font-weight: normal; }
+        .footer-container { 
+          margin: 0 45px; 
+          font-family: 'Segoe UI', Arial, sans-serif; 
+          width: calc(100% - 90px);
+          font-size: 7.5pt;
+        }
+        .footer-table { 
+          width: 100%; 
+          border-collapse: collapse; 
+          table-layout: fixed; 
+          border: 1.5pt solid #000; 
+        }
+        .footer-table td { 
+          font-size: 7.5pt; 
+          padding: 3px 5px; 
+          vertical-align: top; 
+          border: 1pt solid #000; 
+          line-height: 1.3; 
+        }
+        .footer-label { font-weight: bold; display: block; margin-bottom: 1px; }
+        .footer-value { font-weight: normal; }
       </style>
       <div class="footer-container">
         <table class="footer-table">
+          <colgroup>
+            <col style="width: 20%;">
+            <col style="width: 20%;">
+            <col style="width: 20%;">
+            <col style="width: 40%;">
+          </colgroup>
           <tr>
-            <td style="width: 33.33%;"><span class="label">Prepared By:</span><br><span class="value">${preparerDisplay}</span></td>
-            <td style="width: 33.33%;"><span class="label">Approved By:</span><br><span class="value">${approverDisplay}</span></td>
-            <td style="width: 33.34%;"><span class="label">Issued By:</span><br><span class="value">${issuerDisplay}</span></td>
-          </tr>
-          <tr>
-            <td colspan="3"><span class="label">Status:</span> <span class="value">${status}</span></td>
-          </tr>
-          ${controlCopyInfo ? `
-          <tr>
-            <td colspan="3" style="text-align: center; padding: 10px 6px;">
-              <span class="label" style="font-size: 8.5pt; text-transform: uppercase;">Controlled Copy</span><br>
-              <span class="value" style="font-size: 8pt;">(Printed by ${controlCopyInfo.userFullName} and ${controlCopyInfo.userId}) / ${controlCopyInfo.date}</span>
+            <td>
+              <span class="footer-label">Prepared By:</span>
+              <span class="footer-value">(${preparer} and ${preparerId})</span>
             </td>
+            <td>
+              <span class="footer-label">Approved By:</span>
+              <span class="footer-value">${approver === 'Pending' || !document.approvedBy ? 'Pending' : `(${approver} and ${approverId})`}</span>
+            </td>
+            <td>
+              <span class="footer-label">Issued By:</span>
+              <span class="footer-value">${issuer === 'Pending' || !document.issuedBy ? 'Pending' : `(${issuer} and ${issuerId})`}</span>
+            </td>
+            <td style="text-align: center;">${statusContent}</td>
           </tr>
-          ` : ''}
         </table>
       </div>
     `;
@@ -305,36 +357,118 @@ export class PDFService {
 
       const companyHeader = (document.headerInfo || "").toUpperCase();
 
-      const drawHeader = (p: any) => {
+      const drawHeader = (p: any, pageNum: number, totalPgs: number) => {
         const companyHeader = "NEELIKON FOOD DYES AND CHEMICALS LIMITED";
-        p.drawText(companyHeader, { x: 45, y: height - 30, size: 10, font: boldFont });
+        const L = 40;        // left margin
+        const R = width - 40; // right edge
+        const W = R - L;     // usable width
 
-        // Header Box
-        p.drawRectangle({ x: 40, y: height - 145, width: width - 80, height: 105, borderColor: rgb(0, 0, 0), borderWidth: 1 });
+        // Column X positions (5 columns: 15%, 20%, 12%, 30%, 13%)
+        const col0 = L;
+        const col1 = L + W * 0.15;
+        const col2 = L + W * 0.35;
+        const col3 = L + W * 0.47;
+        const col4 = L + W * 0.77;
 
-        const location = (document as any).location || '-';
-        const dateOfIssue = this.formatDate(document.dateOfIssue);
-        const revNo = document.revisionNo || 0;
-        const dateOfRev = this.formatDate((document as any).dateOfRevision);
+        // Row Y positions (from top)
+        const row0Top = height - 20;   // Company name row top
+        const row0Bot = height - 40;   // Company name row bottom
+        const row1Top = row0Bot;        // Meta row top
+        const row1Bot = height - 75;   // Meta row bottom
+        const row2Top = row1Bot;        // Dept row top
+        const row2Bot = height - 95;  // Dept row bottom
 
-        p.drawText(`Location: ${location} | Date of Issue: ${dateOfIssue}`, { x: 45, y: height - 60, size: 8, font });
-        p.drawText(`Rev. No.: ${revNo} | Date of Rev.: ${dateOfRev}`, { x: 45, y: height - 75, size: 8, font });
+        const borderColor = rgb(0, 0, 0);
+        const lineColor = rgb(0, 0, 0);
+        const bw = 1;
 
+        // Outer box
+        p.drawRectangle({ x: L, y: row2Bot, width: W, height: row0Top - row2Bot, borderColor, borderWidth: 1.5 });
+
+        // Row separators
+        p.drawLine({ start: { x: L, y: row0Bot }, end: { x: R, y: row0Bot }, thickness: 1.5, color: borderColor });
+        p.drawLine({ start: { x: L, y: row1Bot }, end: { x: R, y: row1Bot }, thickness: 1.5, color: borderColor });
+
+        // Column separators for row 1 (meta row)
+        [col1, col2, col3, col4].forEach(cx => {
+          p.drawLine({ start: { x: cx, y: row1Top }, end: { x: cx, y: row1Bot }, thickness: bw, color: lineColor });
+        });
+
+        // Column separators for row 2 (dept row) — 3 cells: dept(15%) | title(32%) | doc no(53%)
+        const deptCol1 = L + W * 0.15;
+        const deptCol2 = L + W * 0.47;
+        [deptCol1, deptCol2].forEach(cx => {
+          p.drawLine({ start: { x: cx, y: row2Top }, end: { x: cx, y: row2Bot }, thickness: bw, color: lineColor });
+        });
+
+        // Company name centered
+        const compW = boldFont.widthOfTextAtSize(companyHeader, 10);
+        p.drawText(companyHeader, { x: L + (W - compW) / 2, y: row0Bot + 7, size: 10, font: boldFont, color: rgb(0, 0, 0) });
+
+        // Row 1 fields
+        const location = (document as any).location || '';
+        const dateOfIssue = this.formatDate(document.originalDateOfIssue || document.dateOfIssue);
+        const revNo = document.revisionNo !== undefined ? String(document.revisionNo).padStart(2, '0') : '00';
+        const dateOfRev = this.formatDate(document.dateOfRev || (document.revisionNo !== undefined && document.revisionNo > 0 ? document.dateOfIssue : null));
         const dueDate = this.formatDate(document.reviewDueDate);
-        p.drawText(`Due Date of Rev.: ${dueDate} | Page: 1 of 1`, { x: 45, y: height - 95, size: 8, font });
 
+        const metaY = row1Bot + 14;
+        const metaY2 = row1Bot + 5;
+        const fs1 = 7.5;
+
+        p.drawText('Location:', { x: col0 + 4, y: metaY, size: fs1, font: boldFont });
+        p.drawText(` ${location}`, { x: col0 + 4 + boldFont.widthOfTextAtSize('Location:', fs1), y: metaY, size: fs1, font });
+
+        p.drawText('Date of Issue:', { x: col1 + 4, y: metaY, size: fs1, font: boldFont });
+        p.drawText(` ${dateOfIssue}`, { x: col1 + 4 + boldFont.widthOfTextAtSize('Date of Issue:', fs1), y: metaY, size: fs1, font });
+
+        p.drawText('Rev. No.:', { x: col2 + 4, y: metaY, size: fs1, font: boldFont });
+        p.drawText(` ${revNo}`, { x: col2 + 4 + boldFont.widthOfTextAtSize('Rev. No.:', fs1), y: metaY, size: fs1, font });
+
+        p.drawText('Date of Rev.       :', { x: col3 + 4, y: metaY, size: fs1, font: boldFont });
+        p.drawText(` ${dateOfRev}`, { x: col3 + 4 + boldFont.widthOfTextAtSize('Date of Rev.       :', fs1), y: metaY, size: fs1, font });
+        p.drawText('Due Date of Rev.:', { x: col3 + 4, y: metaY2, size: fs1, font: boldFont });
+        p.drawText(` ${dueDate}`, { x: col3 + 4 + boldFont.widthOfTextAtSize('Due Date of Rev.:', fs1), y: metaY2, size: fs1, font });
+
+        p.drawText(`Page ${pageNum}  of  ${totalPgs}`, { x: col4 + 4, y: metaY, size: fs1, font: boldFont });
+
+        // Row 2 fields — Dept | Title | Doc. No.
         const deptName = (document as any).departmentNames?.[0] || 'Management Representative';
-        p.drawText(`Dept.: ${deptName.substring(0, 40)}`, { x: 45, y: height - 115, size: 8, font });
-        p.drawText(`Title: ${document.docName.substring(0, 50)}`, { x: 45, y: height - 130, size: 8, font });
-        p.drawText(`Doc. No.: ${document.docNumber}`, { x: width - 200, y: height - 130, size: 8, font });
+        const deptY = row2Bot + 5;
+
+        p.drawText('Dept.:', { x: col0 + 4, y: deptY, size: fs1, font: boldFont });
+        p.drawText(` ${deptName.substring(0, 20)}`, { x: col0 + 4 + boldFont.widthOfTextAtSize('Dept.:', fs1), y: deptY, size: fs1, font });
+
+        p.drawText('Title:', { x: deptCol1 + 4, y: deptY, size: fs1, font: boldFont });
+        p.drawText(` ${document.docName.substring(0, 45)}`, { x: deptCol1 + 4 + boldFont.widthOfTextAtSize('Title:', fs1), y: deptY, size: fs1, font });
+
+        p.drawText('Doc. No.:', { x: deptCol2 + 4, y: deptY, size: fs1, font: boldFont });
+        p.drawText(` ${document.docNumber}`, { x: deptCol2 + 4 + boldFont.widthOfTextAtSize('Doc. No.:', fs1), y: deptY, size: fs1, font });
       };
-      drawHeader(page);
+      drawHeader(page, 1, 1);
       let y = height - 170;
       const lines = content.split('\n').filter(l => l.trim().length > 0);
+
+      // First pass: calculate total pages
+      let tempY = y;
+      let totalPages = 1;
+      for (const line of lines) {
+        if (tempY < 150) {
+          totalPages++;
+          tempY = height - 170;
+        }
+        tempY -= 15;
+      }
+
+      // Re-draw first page header with correct total
+      drawHeader(page, 1, totalPages);
+      let currentPage = 1;
+
       for (const line of lines) {
         if (y < 150) {
           page = pdfDoc.addPage([595.28, 841.89]);
-          drawHeader(page);
+          currentPage++;
+          drawHeader(page, currentPage, totalPages);
           y = height - 170;
         }
         // Clean characters for PDF-lib compatibility

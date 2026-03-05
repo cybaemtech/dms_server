@@ -18,6 +18,8 @@ export interface Document {
   dateOfIssue: string;
   revisionNo: number;
   preparedBy: string;
+  location?: string | null;
+  dateOfRev?: string | null;
   duePeriodYears?: number;
   reasonForRevision?: string;
 }
@@ -34,6 +36,7 @@ interface DocumentTableProps {
   showActions?: boolean;
   canEdit?: boolean;
   canDelete?: boolean;
+  showLocation?: boolean;
 }
 
 export default function DocumentTable({
@@ -48,6 +51,7 @@ export default function DocumentTable({
   showActions = true,
   canEdit = false,
   canDelete = false,
+  showLocation = false,
 }: DocumentTableProps) {
   return (
     <div className="border rounded-lg overflow-hidden" data-testid="table-documents">
@@ -61,6 +65,9 @@ export default function DocumentTable({
               <th className="px-6 py-3 text-left text-sm font-medium text-foreground">Revision</th>
               <th className="px-6 py-3 text-left text-sm font-medium text-foreground">Date</th>
               <th className="px-6 py-3 text-left text-sm font-medium text-foreground">Prepared By</th>
+              {showLocation && (
+                <th className="px-6 py-3 text-left text-sm font-medium text-foreground">Location</th>
+              )}
               {showActions && (
                 <th className="px-6 py-3 text-right text-sm font-medium text-foreground">Actions</th>
               )}
@@ -94,6 +101,11 @@ export default function DocumentTable({
                 <td className="px-6 py-4">
                   <span className="text-sm text-muted-foreground">{doc.preparedBy}</span>
                 </td>
+                {showLocation && (
+                  <td className="px-6 py-4">
+                    <span className="text-sm text-muted-foreground">{doc.location || '-'}</span>
+                  </td>
+                )}
                 {showActions && (
                   <td className="px-6 py-4">
                     <div className="flex items-center justify-end gap-2">

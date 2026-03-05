@@ -38,7 +38,15 @@ function Router() {
   const [userRole, setUserRole] = useState<UserRole | null>(session?.userRole || null);
   const [userName, setUserName] = useState<string>(session?.userName || "");
   const [userFullName, setUserFullName] = useState<string>(session?.userFullName || "");
+  const [userLocationState, setUserLocationState] = useState<string>(session?.location || "");
   const [userId, setUserId] = useState<string>(session?.userId || "");
+
+  // Update logic to ensure location is always synced
+  useEffect(() => {
+    if (session?.location && !userLocationState) {
+      setUserLocationState(session.location);
+    }
+  }, [session, userLocationState]);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
@@ -47,6 +55,27 @@ function Router() {
   // Restore navigation on mount if logged in
   useEffect(() => {
     if (session && isAuthenticated) {
+      // Aggressively fetch latest user info if location is missing or for every session restore to be safe
+      if (userId) {
+        const fetchUserData = async () => {
+          try {
+            const response = await fetch(`/api/users/${userId}`);
+            if (response.ok) {
+              const userData = await response.json();
+              if (userData.location) {
+                setUserLocationState(userData.location);
+                // Update local session to persist for next reload
+                const updatedSession = { ...session, location: userData.location };
+                localStorage.setItem('userSession', JSON.stringify(updatedSession));
+              }
+            }
+          } catch (error) {
+            console.error("Error refreshing user data:", error);
+          }
+        };
+        fetchUserData();
+      }
+
       switch (session.userRole) {
         case "Creator":
           setLocation("/creator");
@@ -67,7 +96,7 @@ function Router() {
     }
   }, []);
 
-  const handleLogin = async (data: { username: string; password: string }) => {
+  const handleLogin = async (data: { username: string; password: string }): Promise<boolean> => {
     try {
       const response = await fetch("/api/login", {
         method: "POST",
@@ -84,7 +113,7 @@ function Router() {
           title: "Login Failed",
           message: error.message || "Invalid credentials. Please try again.",
         });
-        return;
+        return false;
       }
 
       const user = await response.json();
@@ -102,6 +131,7 @@ function Router() {
       setUserRole(role);
       setUserName(user.username);
       setUserFullName(user.fullName);
+      setUserLocationState(user.location || "");
       setUserId(user.id);
       setIsAuthenticated(true);
 
@@ -110,7 +140,8 @@ function Router() {
         userRole: role,
         userName: user.username,
         userFullName: user.fullName,
-        userId: user.id
+        userId: user.id,
+        location: user.location
       }));
 
       // Navigate to appropriate dashboard
@@ -138,12 +169,14 @@ function Router() {
         title: "Login Successful",
         message: `Welcome back, ${user.fullName}!`,
       });
+      return true;
     } catch (error: any) {
       addNotification({
         type: "error",
         title: "Login Error",
         message: error.message || "An error occurred during login.",
       });
+      return false;
     }
   };
 
@@ -151,6 +184,7 @@ function Router() {
     setIsAuthenticated(false);
     setUserRole(null);
     setUserName("");
+    setUserLocationState("");
     setUserId("");
     setDocuments([]);
     setActivities([]);
@@ -212,7 +246,9 @@ function Router() {
       if (data.duePeriodYears) formData.append('duePeriodYears', data.duePeriodYears);
       if (data.location) formData.append('location', data.location);
       if (data.departmentId) formData.append('departmentId', data.departmentId);
-      if (data.dateOfRevision) formData.append('dateOfRevision', data.dateOfRevision);
+      if (data.dateOfRevision) formData.append('dateOfRev', data.dateOfRevision);
+      if (data.reviewDueDate) formData.append('reviewDueDate', data.reviewDueDate);
+      if (data.previousVersionId) formData.append('previousVersionId', data.previousVersionId);
 
       const response = await fetch('/api/documents', {
         method: 'POST',
@@ -319,38 +355,43 @@ function Router() {
   return (
     <>
       <Switch>
-        <Route path="/" component={() => <LoginPage onLogin={handleLogin} />} />
-        <Route
-          path="/creator"
-          component={() => (
-            <CreatorDashboardWithAPI
-              onCreateDocument={handleCreateDocument}
-              onLogout={handleLogout}
-              userId={userId}
-              userName={userName}
-            />
-          )}
-        />
-        <Route
-          path="/creator/create"
-          component={() => (
-            <CreateDocumentPage
-              onBack={() => {
-                setInitialDocumentData(null);
-                setLocation("/creator");
-              }}
-              onSubmit={handleDocumentSubmit}
-              onLogout={handleLogout}
-              userName={userName}
-              userFullName={userFullName}
-              initialData={initialDocumentData}
-            />
-          )}
-        />
-        <Route path="/approver" component={() => <ApproverDashboard onLogout={handleLogout} userId={userId} approverName={userFullName} />} />
-        <Route path="/issuer" component={() => <IssuerDashboard onLogout={handleLogout} userId={userId} issuerName={userFullName} />} />
-        <Route path="/recipient" component={() => <RecipientDashboard onLogout={handleLogout} userId={userId} />} />
-        <Route path="/admin" component={() => <AdminDashboard onLogout={handleLogout} userId={userId} />} />
+        <Route path="/">
+          <LoginPage onLogin={handleLogin} />
+        </Route>
+        <Route path="/creator">
+          <CreatorDashboardWithAPI
+            onCreateDocument={handleCreateDocument}
+            onLogout={handleLogout}
+            userId={userId}
+            userName={userName}
+          />
+        </Route>
+        <Route path="/creator/create">
+          <CreateDocumentPage
+            onBack={() => {
+              setInitialDocumentData(null);
+              setLocation("/creator");
+            }}
+            onSubmit={handleDocumentSubmit}
+            onLogout={handleLogout}
+            userName={userName}
+            userFullName={userFullName}
+            userLocation={userLocationState}
+            initialData={initialDocumentData}
+          />
+        </Route>
+        <Route path="/approver">
+          <ApproverDashboard onLogout={handleLogout} userId={userId} approverName={userFullName} />
+        </Route>
+        <Route path="/issuer">
+          <IssuerDashboard onLogout={handleLogout} userId={userId} issuerName={userFullName} />
+        </Route>
+        <Route path="/recipient">
+          <RecipientDashboard onLogout={handleLogout} userId={userId} recipientName={userFullName} />
+        </Route>
+        <Route path="/admin">
+          <AdminDashboard onLogout={handleLogout} userId={userId} />
+        </Route>
         <Route component={NotFound} />
       </Switch>
 

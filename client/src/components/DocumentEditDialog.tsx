@@ -23,6 +23,9 @@ const documentSchema = z.object({
   revisionNumber: z.string().min(1, "Revision number is required"),
   duePeriodYears: z.string().optional(),
   preparerName: z.string().min(1, "Preparer name is required"),
+  location: z.string().optional(),
+  dateOfRev: z.string().optional(),
+  reviewDueDate: z.string().optional(),
   reasonForRevision: z.string().optional(),
 });
 
@@ -50,6 +53,8 @@ export default function DocumentEditDialog({
       revisionNumber: "0",
       duePeriodYears: "",
       preparerName: "",
+      location: "",
+      dateOfRevision: "",
       reasonForRevision: "",
     },
   });
@@ -63,6 +68,9 @@ export default function DocumentEditDialog({
         revisionNumber: document.revisionNo.toString(),
         duePeriodYears: (document as any).duePeriodYears?.toString() || "",
         preparerName: document.preparedBy,
+        location: document.location || "",
+        dateOfRev: (document as any).dateOfRev ? new Date((document as any).dateOfRev).toISOString().split('T')[0] : "",
+        reviewDueDate: (document as any).reviewDueDate ? new Date((document as any).reviewDueDate).toISOString().split('T')[0] : "",
         reasonForRevision: (document as any).reasonForRevision || "",
       });
     }
@@ -137,11 +145,12 @@ export default function DocumentEditDialog({
                   <FormItem>
                     <FormLabel>Revision Number *</FormLabel>
                     <FormControl>
-                      <Input 
-                        type="number" 
-                        {...field} 
-                        onChange={(e) => field.onChange(e.target.value)}
-                        data-testid="input-edit-revision-number" 
+                      <Input
+                        type="text"
+                        {...field}
+                        disabled
+                        data-testid="input-edit-revision-number"
+                        className="bg-muted cursor-not-allowed"
                       />
                     </FormControl>
                     <FormMessage />
@@ -156,7 +165,7 @@ export default function DocumentEditDialog({
                   <FormItem>
                     <FormLabel>Due Period (Years)</FormLabel>
                     <FormControl>
-                      <Input type="number" {...field} data-testid="input-edit-due-period" />
+                      <Input type="number" {...field} disabled data-testid="input-edit-due-period" className="bg-muted cursor-not-allowed" />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -170,7 +179,49 @@ export default function DocumentEditDialog({
                   <FormItem>
                     <FormLabel>Preparer Name *</FormLabel>
                     <FormControl>
-                      <Input {...field} data-testid="input-edit-preparer-name" />
+                      <Input {...field} disabled data-testid="input-edit-preparer-name" className="bg-muted cursor-not-allowed" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="dateOfRev"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Date of Rev.</FormLabel>
+                    <FormControl>
+                      <Input type="date" {...field} data-testid="input-edit-date-revision" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="reviewDueDate"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Review Due Date</FormLabel>
+                    <FormControl>
+                      <Input type="date" {...field} data-testid="input-edit-review-due-date" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="location"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Location</FormLabel>
+                    <FormControl>
+                      <Input {...field} data-testid="input-edit-location" readOnly className="bg-muted cursor-default" />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

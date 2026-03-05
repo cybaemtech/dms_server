@@ -54,15 +54,30 @@ copyFile(
 
 // 2. Copy package.json (for production dependencies)
 const packageJson = JSON.parse(fs.readFileSync(path.join(rootDir, 'package.json'), 'utf8'));
+
+// Filter out unused dependencies (Drizzle, Neon, PostgreSQL) and client-only React packages
+const serverDeps = {};
+const excludeDeps = [
+    '@neondatabase/serverless',
+    'drizzle-orm',
+    'drizzle-zod',
+    'connect-pg-simple',
+];
+for (const [key, value] of Object.entries(packageJson.dependencies || {})) {
+    if (!excludeDeps.includes(key)) {
+        serverDeps[key] = value;
+    }
+}
+
 const productionPackageJson = {
     name: packageJson.name,
     version: packageJson.version,
     type: packageJson.type,
     license: packageJson.license,
     scripts: {
-        start: packageJson.scripts.start
+        start: "node app.js"
     },
-    dependencies: packageJson.dependencies
+    dependencies: serverDeps
 };
 
 fs.writeFileSync(
@@ -83,13 +98,36 @@ copyDirectory(
     path.join(distDir, 'pdfs')
 );
 
-// 5. Copy database file (if exists)
-const dbFile = path.join(rootDir, 'data.json');
-if (fs.existsSync(dbFile)) {
-    copyFile(dbFile, path.join(distDir, 'data.json'));
+// 5. Copy .env file (SQL Server config)
+const envFile = path.join(rootDir, '.env');
+if (fs.existsSync(envFile)) {
+    copyFile(envFile, path.join(distDir, '.env'));
 }
 
-// 6. Create .gitignore for dist
+// 6. Create web.config for IIS reverse proxy
+const webConfigContent = `<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+  <system.webServer>
+    <rewrite>
+      <rules>
+        <rule name="ReverseProxyToNode" stopProcessing="true">
+          <match url="(.*)" />
+          <action type="Rewrite" url="http://127.0.0.1:5000/{R:1}" />
+        </rule>
+      </rules>
+    </rewrite>
+    <httpErrors existingResponse="PassThrough" />
+    <security>
+      <requestFiltering>
+        <requestLimits maxAllowedContentLength="52428800" />
+      </requestFiltering>
+    </security>
+  </system.webServer>
+</configuration>`;
+fs.writeFileSync(path.join(distDir, 'web.config'), webConfigContent);
+console.log('✓ Created: web.config (IIS reverse proxy)');
+
+// 7. Create .gitignore for dist
 const gitignoreContent = `node_modules/
 *.log
 .env
@@ -97,54 +135,50 @@ const gitignoreContent = `node_modules/
 fs.writeFileSync(path.join(distDir, '.gitignore'), gitignoreContent);
 console.log('✓ Created: .gitignore');
 
-// 7. Create deployment README
-const readmeContent = `# Deployment Package
-
-This folder contains everything needed to deploy to cPanel.
+// 8. Create deployment README
+const readmeContent = `# DMS Deployment Package (IIS + SQL Server)
 
 ## Files Included:
 - \`app.js\` - Entry point for Node.js
 - \`index.js\` - Built server code
 - \`public/\` - Frontend static files
 - \`package.json\` - Production dependencies only
+- \`web.config\` - IIS reverse proxy configuration
+- \`.env\` - SQL Server connection settings
 - \`uploads/\` - User uploaded files (if any)
 - \`pdfs/\` - Generated PDFs (if any)
-- \`data.json\` - Database file (if using JSON storage)
 
-## Deployment Steps:
+## IIS Deployment Steps:
 
-1. **Upload this entire folder** to your cPanel server
+1. **Create DMS database in SQL Server** - Run scripts/create-tables.sql
 
-2. **In cPanel "Setup Node.js App":**
-   - Application startup file: \`app.js\`
-   - Node.js version: 18.x or higher
-   - Application mode: Production
-   - Environment variable: \`NODE_ENV=production\`
-
-3. **Install dependencies** (in cPanel terminal):
-   \`\`\`bash
-   cd /path/to/this/folder
+2. **Install dependencies** in the dist folder:
+   \`\`\`
+   cd dist
    npm install --production
    \`\`\`
 
-4. **Restart the application** in cPanel
+3. **Configure .env** with your SQL Server connection settings
 
-5. **Test** by visiting your URL and trying to login
+4. **Start the Node.js server**:
+   \`\`\`
+   node app.js
+   \`\`\`
 
-## Troubleshooting:
-- Check Node.js app status in cPanel (should show "Running")
-- View Passenger log file for errors
-- Ensure all files uploaded correctly
-- Verify Node.js version is 18.x or higher
+5. **Configure IIS**:
+   - Point the IIS site physical path to this dist folder
+   - Ensure URL Rewrite and ARR modules are installed
+   - Enable ARR proxy in IIS Server level
 
-For detailed instructions, see DEPLOYMENT.md in the project root.
+6. **Test** by visiting your IIS URL
 `;
 fs.writeFileSync(path.join(distDir, 'README.md'), readmeContent);
 console.log('✓ Created: README.md');
 
 console.log('\n✅ Deployment package ready in dist/ folder');
 console.log('\n📋 Next steps:');
-console.log('1. Run: npm install --production (in dist folder, or on server)');
-console.log('2. Upload entire dist/ folder to cPanel');
-console.log('3. Configure Node.js App in cPanel with app.js as entry point');
-console.log('4. Restart the application\n');
+console.log('1. Run SQL script: scripts/create-tables.sql on SQL Server');
+console.log('2. Run: npm install --production (in dist folder)');
+console.log('3. Configure .env with SQL Server credentials');
+console.log('4. Start: node app.js');
+console.log('5. Point IIS site to dist/ folder\n');

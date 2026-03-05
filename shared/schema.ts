@@ -1,162 +1,210 @@
-import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, timestamp, integer, boolean, json } from "drizzle-orm/pg-core";
-import { createInsertSchema } from "drizzle-zod";
-import { z } from "zod";
+// DMS Schema - TypeScript types for SQL Server
+// No Drizzle/PostgreSQL dependencies - pure TypeScript interfaces
 
-export const users = pgTable("users", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  username: text("username").notNull().unique(),
-  password: text("password").notNull(),
-  role: text("role").notNull().default("creator"),
-  fullName: text("full_name").notNull(),
-  masterCopyAccess: boolean("master_copy_access").notNull().default(false),
-  departmentId: varchar("department_id").references(() => departments.id),
-  departmentName: text("department_name"),
-  departmentCode: text("department_code"),
-  location: text("location"),
-});
+// =============================================
+// User
+// =============================================
+export interface User {
+  id: string;
+  username: string;
+  password: string;
+  role: string;
+  fullName: string;
+  masterCopyAccess: boolean;
+  departmentId: string | null;
+  departmentName: string | null;
+  departmentCode: string | null;
+  location: string | null;
+}
 
-export const departments = pgTable("departments", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  name: text("name").notNull().unique(),
-  code: text("code").notNull().unique(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+export interface InsertUser {
+  username: string;
+  password: string;
+  fullName: string;
+  role?: string;
+  masterCopyAccess?: boolean;
+  departmentId?: string | null;
+  departmentName?: string | null;
+  departmentCode?: string | null;
+  location?: string | null;
+}
 
-export const documents = pgTable("documents", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  docName: text("doc_name").notNull(),
-  docNumber: text("doc_number").notNull().unique(),
-  status: text("status").notNull().default("pending"),
-  dateOfIssue: timestamp("date_of_issue").defaultNow(),
-  revisionNo: integer("revision_no").notNull().default(0),
-  preparedBy: varchar("prepared_by").notNull().references(() => users.id),
-  approvedBy: varchar("approved_by").references(() => users.id),
-  issuedBy: varchar("issued_by").references(() => users.id),
-  content: text("content"),
-  headerInfo: text("header_info"),
-  footerInfo: text("footer_info"),
-  duePeriodYears: integer("due_period_years"),
-  reasonForRevision: text("reason_for_revision"),
-  reviewDueDate: timestamp("review_due_date"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-  approvedAt: timestamp("approved_at"),
-  issuedAt: timestamp("issued_at"),
-  approvalRemarks: text("approval_remarks"),
-  declineRemarks: text("decline_remarks"),
-  issueRemarks: text("issue_remarks"),
-  issuerName: text("issuer_name"),
-  previousVersionId: varchar("previous_version_id").references((): any => documents.id),
-  pdfFilePath: text("pdf_file_path"),
-  wordFilePath: text("word_file_path"),
-  creatorData: json("creator_data").$type<{ id: string; username: string; fullName: string; role: string }>(),
-  approverData: json("approver_data").$type<{ id: string; username: string; fullName: string; role: string }>(),
-  issuerData: json("issuer_data").$type<{ id: string; username: string; fullName: string; role: string }>(),
-  issueNo: text("issue_no"),
-  originalDateOfIssue: timestamp("original_date_of_issue"),
-  preparerName: text("preparer_name"),
-  approverName: text("approver_name"),
-  pageCount: integer("page_count"),
-});
+// =============================================
+// Department
+// =============================================
+export interface Department {
+  id: string;
+  name: string;
+  code: string;
+  category: string | null;
+  categoryName: string | null;
+  createdAt: Date;
+}
 
-export const documentDepartments = pgTable("document_departments", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  documentId: varchar("document_id").notNull().references(() => documents.id),
-  departmentId: varchar("department_id").notNull().references(() => departments.id),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+export interface InsertDepartment {
+  name: string;
+  code: string;
+  category?: string | null;
+  categoryName?: string | null;
+}
 
-export const notifications = pgTable("notifications", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("user_id").notNull().references(() => users.id),
-  documentId: varchar("document_id").notNull().references(() => documents.id),
-  message: text("message").notNull(),
-  type: text("type").notNull(),
-  isRead: boolean("is_read").notNull().default(false),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+// =============================================
+// Document
+// =============================================
+export interface Document {
+  id: string;
+  docName: string;
+  docNumber: string;
+  status: string;
+  dateOfIssue: Date | null;
+  revisionNo: number;
+  preparedBy: string;
+  approvedBy: string | null;
+  issuedBy: string | null;
+  content: string | null;
+  headerInfo: string | null;
+  footerInfo: string | null;
+  duePeriodYears: number | null;
+  reasonForRevision: string | null;
+  reviewDueDate: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+  approvedAt: Date | null;
+  issuedAt: Date | null;
+  approvalRemarks: string | null;
+  declineRemarks: string | null;
+  issueRemarks: string | null;
+  issuerName: string | null;
+  previousVersionId: string | null;
+  pdfFilePath: string | null;
+  wordFilePath: string | null;
+  creatorData: { id: string; username: string; fullName: string; role: string } | null;
+  approverData: { id: string; username: string; fullName: string; role: string } | null;
+  issuerData: { id: string; username: string; fullName: string; role: string } | null;
+  issueNo: string | null;
+  originalDateOfIssue: Date | null;
+  preparerName: string | null;
+  approverName: string | null;
+  pageCount: number | null;
+  location: string | null;
+  dateOfRev: Date | null;
+}
 
-export const controlCopies = pgTable("control_copies", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  documentId: varchar("document_id").notNull().references(() => documents.id),
-  userId: varchar("user_id").notNull().references(() => users.id),
-  copyNumber: integer("copy_number").notNull(),
-  actionType: text("action_type").notNull(),
-  generatedAt: timestamp("generated_at").defaultNow().notNull(),
-});
+export interface InsertDocument {
+  docName: string;
+  docNumber: string;
+  status?: string;
+  dateOfIssue?: Date | string | null;
+  revisionNo?: number;
+  preparedBy: string;
+  approvedBy?: string | null;
+  issuedBy?: string | null;
+  content?: string | null;
+  headerInfo?: string | null;
+  footerInfo?: string | null;
+  duePeriodYears?: number | null;
+  reasonForRevision?: string | null;
+  reviewDueDate?: Date | string | null;
+  approvalRemarks?: string | null;
+  declineRemarks?: string | null;
+  issueRemarks?: string | null;
+  issuerName?: string | null;
+  previousVersionId?: string | null;
+  pdfFilePath?: string | null;
+  wordFilePath?: string | null;
+  creatorData?: { id: string; username: string; fullName: string; role: string } | null;
+  approverData?: { id: string; username: string; fullName: string; role: string } | null;
+  issuerData?: { id: string; username: string; fullName: string; role: string } | null;
+  issueNo?: string | null;
+  originalDateOfIssue?: Date | string | null;
+  preparerName?: string | null;
+  approverName?: string | null;
+  pageCount?: number | null;
+  location?: string | null;
+  dateOfRev?: Date | string | null;
+}
 
-export const printLogs = pgTable("print_logs", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  documentId: varchar("document_id").notNull().references(() => documents.id),
-  userId: varchar("user_id").notNull().references(() => users.id),
-  controlCopyId: varchar("control_copy_id").notNull().references(() => controlCopies.id),
-  printedAt: timestamp("printed_at").defaultNow().notNull(),
-  medium: text("medium"),
-});
+// =============================================
+// Notification
+// =============================================
+export interface Notification {
+  id: string;
+  userId: string;
+  documentId: string;
+  message: string;
+  type: string;
+  isRead: boolean;
+  createdAt: Date;
+}
 
-export const documentRecipients = pgTable("document_recipients", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  documentId: varchar("document_id").notNull().references(() => documents.id),
-  userId: varchar("user_id").references(() => users.id),
-  departmentId: varchar("department_id").references(() => departments.id),
-  notifiedAt: timestamp("notified_at").defaultNow().notNull(),
-  readAt: timestamp("read_at"),
-});
+export interface InsertNotification {
+  userId: string;
+  documentId: string;
+  message: string;
+  type: string;
+}
 
-export const insertUserSchema = createInsertSchema(users).pick({
-  username: true,
-  password: true,
-  fullName: true,
-  role: true,
-  masterCopyAccess: true,
-});
+// =============================================
+// Control Copy
+// =============================================
+export interface ControlCopy {
+  id: string;
+  documentId: string;
+  userId: string;
+  copyNumber: number;
+  actionType: string;
+  generatedAt: Date;
+}
 
-export const insertDocumentSchema = createInsertSchema(documents).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-  approvedAt: true,
-  issuedAt: true,
-});
+export interface InsertControlCopy {
+  documentId: string;
+  userId: string;
+  actionType: string;
+}
 
-export const insertDepartmentSchema = createInsertSchema(departments).omit({
-  id: true,
-  createdAt: true,
-});
+// =============================================
+// Print Log
+// =============================================
+export interface PrintLog {
+  id: string;
+  documentId: string;
+  userId: string;
+  controlCopyId: string;
+  printedAt: Date;
+  medium: string | null;
+}
 
-export const insertNotificationSchema = createInsertSchema(notifications).omit({
-  id: true,
-  createdAt: true,
-});
+export interface InsertPrintLog {
+  documentId: string;
+  userId: string;
+  controlCopyId: string;
+  medium?: string | null;
+}
 
-export const insertControlCopySchema = createInsertSchema(controlCopies).omit({
-  id: true,
-  generatedAt: true,
-  copyNumber: true,
-});
+// =============================================
+// Document Recipient
+// =============================================
+export interface DocumentRecipient {
+  id: string;
+  documentId: string;
+  userId: string | null;
+  departmentId: string | null;
+  notifiedAt: Date;
+  readAt: Date | null;
+}
 
-export const insertPrintLogSchema = createInsertSchema(printLogs).omit({
-  id: true,
-  printedAt: true,
-});
+export interface InsertDocumentRecipient {
+  documentId: string;
+  userId?: string | null;
+  departmentId?: string | null;
+}
 
-export const insertDocumentRecipientSchema = createInsertSchema(documentRecipients).omit({
-  id: true,
-  notifiedAt: true,
-});
-
-export type InsertUser = z.infer<typeof insertUserSchema>;
-export type User = typeof users.$inferSelect;
-export type Document = typeof documents.$inferSelect;
-export type InsertDocument = z.infer<typeof insertDocumentSchema>;
-export type Department = typeof departments.$inferSelect;
-export type InsertDepartment = z.infer<typeof insertDepartmentSchema>;
-export type Notification = typeof notifications.$inferSelect;
-export type InsertNotification = z.infer<typeof insertNotificationSchema>;
-export type ControlCopy = typeof controlCopies.$inferSelect;
-export type InsertControlCopy = z.infer<typeof insertControlCopySchema>;
-export type PrintLog = typeof printLogs.$inferSelect;
-export type InsertPrintLog = z.infer<typeof insertPrintLogSchema>;
-export type DocumentRecipient = typeof documentRecipients.$inferSelect;
-export type InsertDocumentRecipient = z.infer<typeof insertDocumentRecipientSchema>;
+// =============================================
+// Document Department (junction table)
+// =============================================
+export interface DocumentDepartment {
+  id: string;
+  documentId: string;
+  departmentId: string;
+  createdAt: Date;
+}

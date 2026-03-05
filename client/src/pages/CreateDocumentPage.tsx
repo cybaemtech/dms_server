@@ -11,10 +11,19 @@ interface CreateDocumentPageProps {
   onLogout?: () => void;
   userName?: string;
   userFullName?: string;
+  userLocation?: string;
   initialData?: any;
 }
 
-export default function CreateDocumentPage({ onBack, onSubmit, onLogout, userName = "User", userFullName, initialData }: CreateDocumentPageProps) {
+export default function CreateDocumentPage({
+  onBack,
+  onSubmit,
+  onLogout,
+  userName = "User",
+  userFullName,
+  userLocation,
+  initialData
+}: CreateDocumentPageProps) {
   return (
     <DashboardLayout
       userRole="Document Creator"
@@ -39,7 +48,12 @@ export default function CreateDocumentPage({ onBack, onSubmit, onLogout, userNam
           <WorkflowProgress currentStep="Creator" />
         </Card>
 
-        <DocumentUploadForm onSubmit={onSubmit} defaultPreparerName={userFullName} initialData={initialData} />
+        <DocumentUploadForm
+          onSubmit={onSubmit}
+          defaultPreparerName={userFullName}
+          defaultLocation={userLocation}
+          initialData={initialData}
+        />
       </div>
     </DashboardLayout>
   );

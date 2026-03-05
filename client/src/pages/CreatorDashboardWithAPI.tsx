@@ -42,7 +42,7 @@ interface ApiDocument {
   declineRemarks?: string;
   createdAt?: string;
   updatedAt?: string;
-  dateOfRevision?: string;
+  dateOfRev?: string;
   reviewDueDate?: string;
   duePeriodYears?: number;
   reasonForRevision?: string;
@@ -146,7 +146,7 @@ export default function CreatorDashboardWithAPI({
           location: data.location,
           duePeriodYears: data.duePeriodYears,
           reasonForRevision: data.reasonForRevision,
-          dateOfRevision: data.dateOfRevision,
+          dateOfRev: data.dateOfRev,
           reviewDueDate: data.reviewDueDate
         }),
       });
@@ -251,7 +251,8 @@ export default function CreatorDashboardWithAPI({
         dateOfIssue: doc.dateOfIssue ? new Date(doc.dateOfIssue).toISOString().split('T')[0] : '',
         revisionNo: doc.revisionNo,
         preparedBy: doc.preparerName || 'Unknown',
-        location: doc.location
+        location: doc.location,
+        dateOfRev: doc.dateOfRev ? new Date(doc.dateOfRev).toISOString().split('T')[0] : null
       }));
   };
 
@@ -358,6 +359,7 @@ export default function CreatorDashboardWithAPI({
                     onDownload={handleDownload}
                     canEdit={true}
                     canDelete={true}
+                    showLocation={true}
                   />
                 )}
               </TabsContent>
@@ -390,6 +392,7 @@ export default function CreatorDashboardWithAPI({
                   onDownload={handleDownload}
                   canEdit={true}
                   canDelete={true}
+                  showLocation={true}
                 />
               </TabsContent>
             </Tabs>
@@ -420,7 +423,7 @@ export default function CreatorDashboardWithAPI({
           revisionNo: selectedDoc.revisionNo,
           preparedBy: selectedDoc.preparerName || 'Unknown',
           location: selectedDoc.location,
-          dateOfRevision: selectedDoc.dateOfRevision,
+          dateOfRev: selectedDoc.dateOfRev,
           reviewDueDate: selectedDoc.reviewDueDate,
           duePeriodYears: selectedDoc.duePeriodYears,
           reasonForRevision: selectedDoc.reasonForRevision

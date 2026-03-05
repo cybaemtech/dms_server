@@ -10,6 +10,7 @@ import { FileText, Eye, Printer } from "lucide-react";
 interface RecipientDashboardProps {
   onLogout?: () => void;
   userId?: string;
+  recipientName?: string;
 }
 
 interface ApiDocument {
@@ -31,15 +32,15 @@ interface Notification {
   createdAt: string;
 }
 
-export default function RecipientDashboard({ onLogout, userId = "recipient-1" }: RecipientDashboardProps) {
+export default function RecipientDashboard({ onLogout, userId = "recipient-1", recipientName = "" }: RecipientDashboardProps) {
   const [pdfViewerOpen, setPdfViewerOpen] = useState(false);
   const [pdfDocId, setPdfDocId] = useState<string>("");
   const [pdfDocName, setPdfDocName] = useState<string>("");
 
   const { data: issuedDocuments = [], isLoading } = useQuery<ApiDocument[]>({
-    queryKey: ["/api/documents", "issued"],
+    queryKey: ["/api/documents", "issued", userId],
     queryFn: async () => {
-      const response = await fetch("/api/documents?status=issued");
+      const response = await fetch(`/api/documents?status=issued&recipientId=${userId}`);
       if (!response.ok) throw new Error("Failed to fetch issued documents");
       return response.json();
     },
@@ -84,7 +85,7 @@ export default function RecipientDashboard({ onLogout, userId = "recipient-1" }:
   return (
     <DashboardLayout
       userRole="Document Recipient"
-      userName="Recipient User"
+      userName={recipientName}
       userId={userId}
       notificationCount={unreadNotifications}
       onLogout={onLogout}
@@ -104,11 +105,11 @@ export default function RecipientDashboard({ onLogout, userId = "recipient-1" }:
             icon={FileText}
             trend="Available documents"
           />
-          <StatCard 
-            title="New This Week" 
-            value={recentDocs} 
-            icon={Eye} 
-            trend="Recently issued" 
+          <StatCard
+            title="New This Week"
+            value={recentDocs}
+            icon={Eye}
+            trend="Recently issued"
           />
           <StatCard
             title="Control Copies"
