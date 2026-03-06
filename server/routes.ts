@@ -30,7 +30,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         username: user.username,
         role: user.role,
         fullName: user.fullName,
-        location: user.location
+        location: user.location,
+        departmentId: user.departmentId || null,
+        departmentName: user.departmentName || null
       });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -75,7 +77,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const preparer = await storage.getUser(doc.preparedBy);
           const approver = doc.approvedBy ? await storage.getUser(doc.approvedBy) : null;
           const issuer = doc.issuedBy ? await storage.getUser(doc.issuedBy) : null;
-          const depts = await storage.getDocumentDepartments(doc.id);
+          let depts = await storage.getDocumentDepartments(doc.id);
+
+          // Fallback: if no departments are assigned in document_departments table,
+          // use the document creator's department so the column is never blank
+          if (depts.length === 0 && preparer?.departmentId && preparer?.departmentName) {
+            depts = [{
+              id: preparer.departmentId,
+              name: preparer.departmentName,
+              code: preparer.departmentCode || '',
+              category: null,
+              categoryName: null,
+              createdAt: new Date()
+            }];
+          }
 
           return {
             ...doc,
@@ -145,7 +160,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const documentsWithDetails = await Promise.all(
         documents.map(async (doc) => {
           const preparer = await storage.getUser(doc.preparedBy);
-          const depts = await storage.getDocumentDepartments(doc.id);
+          let depts = await storage.getDocumentDepartments(doc.id);
+          // Fallback to creator's department if none assigned
+          if (depts.length === 0 && preparer?.departmentId && preparer?.departmentName) {
+            depts = [{ id: preparer.departmentId, name: preparer.departmentName, code: preparer.departmentCode || '', category: null, categoryName: null, createdAt: new Date() }];
+          }
           return {
             ...doc,
             preparerName: preparer?.fullName || "Unknown",
@@ -155,6 +174,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
       );
 
       res.json(documentsWithDetails);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/next-revision-series", async (_req, res) => {
+    try {
+      const nextRevisionNo = await storage.getGlobalNextRevisionNo();
+      res.json({ nextRevisionNo });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/documents/next-revision/:docNumber?", async (req, res) => {
+    try {
+      const nextRevisionNo = await storage.getGlobalNextRevisionNo();
+      res.json({ nextRevisionNo });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
@@ -170,7 +207,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const preparer = await storage.getUser(document.preparedBy);
       const approver = document.approvedBy ? await storage.getUser(document.approvedBy) : null;
       const issuer = document.issuedBy ? await storage.getUser(document.issuedBy) : null;
-      const depts = await storage.getDocumentDepartments(document.id);
+      let depts = await storage.getDocumentDepartments(document.id);
+      // Fallback to creator's department if none assigned
+      if (depts.length === 0 && preparer?.departmentId && preparer?.departmentName) {
+        depts = [{ id: preparer.departmentId, name: preparer.departmentName, code: preparer.departmentCode || '', category: null, categoryName: null, createdAt: new Date() }];
+      }
       const previousVersion = document.previousVersionId
         ? await storage.getDocument(document.previousVersionId)
         : null;
@@ -183,19 +224,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         departments: depts,
         previousVersion
       });
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
-    }
-  });
-
-  app.get("/api/documents/next-revision/:docNumber", async (req, res) => {
-    try {
-      const { docNumber } = req.params;
-      const existingDocs = await storage.getDocumentsByDocNumber(docNumber);
-      const nextRevisionNo = existingDocs.length > 0
-        ? Math.max(...existingDocs.map(d => d.revisionNo || 0)) + 1
-        : 1;
-      res.json({ nextRevisionNo });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
@@ -242,11 +270,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         role: creator.role
       } : null;
 
-      // Auto-calculate revision number based on existing documents with same docNumber
-      const existingDocsWithSameNumber = await storage.getDocumentsByDocNumber(req.body.docNumber);
-      const nextRevisionNo = existingDocsWithSameNumber.length > 0
-        ? Math.max(...existingDocsWithSameNumber.map(d => d.revisionNo || 0)) + 1
-        : 1;
+      // Auto-calculate revision number globally (0, 1, 2, 3...)
+      const nextRevisionNo = await storage.getGlobalNextRevisionNo();
 
       // Auto-calculate Issue No based on existing documents
       const existingDocs = await storage.getDocumentsByUser(req.body.preparedBy);
@@ -314,10 +339,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Document not found" });
       }
 
-      const { 
-        docName, docNumber, dateOfIssue, revisionNumber, 
-        duePeriodYears, reasonForRevision, location, 
-        preparerName, dateOfRev, reviewDueDate 
+      const {
+        docName, docNumber, dateOfIssue, revisionNumber,
+        duePeriodYears, reasonForRevision, location,
+        preparerName, dateOfRev, reviewDueDate
       } = req.body;
 
       const updateData: any = {
@@ -652,7 +677,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const preparer = await storage.getUser(doc.preparedBy);
           const approver = doc.approvedBy ? await storage.getUser(doc.approvedBy) : null;
           const issuer = doc.issuedBy ? await storage.getUser(doc.issuedBy) : null;
-          const depts = await storage.getDocumentDepartments(doc.id);
+          let depts = await storage.getDocumentDepartments(doc.id);
+          // Fallback to creator's department if none assigned
+          if (depts.length === 0 && preparer?.departmentId && preparer?.departmentName) {
+            depts = [{ id: preparer.departmentId, name: preparer.departmentName, code: preparer.departmentCode || '', category: null, categoryName: null, createdAt: new Date() }];
+          }
 
           return {
             ...doc,
@@ -787,17 +816,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const path = await import("path");
       const fs = await import("fs/promises");
+      const fullPath = path.join(pdfService.uploadsDir, path.basename(document.wordFilePath));
 
       try {
-        await fs.access(document.wordFilePath);
-        const fileName = path.basename(document.wordFilePath);
+        await fs.access(fullPath);
+        const fileName = path.basename(fullPath);
 
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
         res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
 
-        const fileBuffer = await fs.readFile(document.wordFilePath);
+        const fileBuffer = await fs.readFile(fullPath);
         res.send(fileBuffer);
       } catch (err) {
+        console.error('Download error:', err);
         return res.status(404).json({ message: "Word file not found on server" });
       }
     } catch (error: any) {
@@ -816,9 +847,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "No Word file available for this document" });
       }
 
+      const fullPath = path.join(pdfService.uploadsDir, path.basename(document.wordFilePath));
       try {
-        await fs.access(document.wordFilePath);
-        const wordBuffer = await fs.readFile(document.wordFilePath);
+        await fs.access(fullPath);
+        const wordBuffer = await fs.readFile(fullPath);
 
         const mammoth = await import("mammoth");
         const result = await mammoth.default.convertToHtml({ buffer: wordBuffer });
@@ -831,6 +863,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           revisionNo: document.revisionNo
         });
       } catch (err) {
+        console.error('View Word error:', err);
         return res.status(404).json({ message: "Word file not found on server" });
       }
     } catch (error: any) {
@@ -939,11 +972,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "No Word file uploaded for this document" });
       }
 
+      const fullWordPath = path.join(pdfService.uploadsDir, path.basename(document.wordFilePath));
+
       try {
-        await fs.access(document.wordFilePath);
-        console.log('Word file exists:', document.wordFilePath);
+        await fs.access(fullWordPath);
+        console.log('Word file exists:', fullWordPath);
       } catch (fileError) {
-        console.error('Word file not found:', document.wordFilePath, fileError);
+        console.error('Word file not found:', fullWordPath, fileError);
         return res.status(404).json({ message: "Word file not found on server" });
       }
 
@@ -960,7 +995,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           userId: user.id,
           userFullName: user.fullName,
           controlCopyNumber: controlCopy.copyNumber,
-          date: new Date().toLocaleDateString()
+          date: new Date().toLocaleDateString('en-GB')
         };
 
         const preparer = await storage.getUser(document.preparedBy);
@@ -980,7 +1015,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         console.log('Converting Word to PDF with enriched data for control copy:', controlCopy.copyNumber);
         pdfPath = await pdfService.convertWordToPDF(
-          document.wordFilePath,
+          fullWordPath,
           enrichedDocument as any,
           controlCopyInfo
         );
@@ -1073,9 +1108,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       // Check for document content before PDF generation
       // Instead of checking document.content, check if word file exists and is accessible
+      const fullPath = path.join(pdfService.uploadsDir, path.basename(document.wordFilePath));
+
       try {
-        await fs.access(document.wordFilePath);
-        const stats = await fs.stat(document.wordFilePath);
+        await fs.access(fullPath);
+        const stats = await fs.stat(fullPath);
         if (stats.size === 0) {
           return res.status(400).json({ message: "Document file is empty. Cannot generate PDF." });
         }
@@ -1110,7 +1147,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           userId: user.id,
           userFullName: user.fullName,
           controlCopyNumber: controlCopy.copyNumber,
-          date: new Date().toLocaleDateString()
+          date: new Date().toLocaleDateString('en-GB')
         };
         const preparer = await storage.getUser(document.preparedBy);
         const approver = document.approvedBy ? await storage.getUser(document.approvedBy) : null;
@@ -1127,8 +1164,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         };
 
         console.log('Converting Word to PDF (print) with enriched data for control copy:', controlCopy.copyNumber);
+        const fullWordPath = path.join(pdfService.uploadsDir, path.basename(document.wordFilePath));
         pdfPath = await pdfService.convertWordToPDF(
-          document.wordFilePath,
+          fullWordPath,
           enrichedDocument as any,
           controlCopyInfo
         );

@@ -37,31 +37,32 @@ export default function DashboardLayout({
   return (
     <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="flex h-16 items-center justify-between px-6">
+        <div className="flex h-12 items-center justify-between px-6">
           <div className="flex items-center gap-4">
-            <h1 className="text-xl font-bold text-foreground">DMS</h1>
+            <h1 className="text-lg font-bold text-foreground">DMS</h1>
             <div className="hidden md:flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">|</span>
-              <span className="text-sm font-medium text-muted-foreground">{userRole}</span>
+              <span className="text-xs text-muted-foreground">|</span>
+              <span className="text-xs font-medium text-muted-foreground uppercase">{userRole}</span>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             <Button
               size="icon"
               variant="ghost"
+              className="h-8 w-8"
               onClick={toggleTheme}
               data-testid="button-theme-toggle"
             >
-              {isDark ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+              {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </Button>
 
             {userId && <NotificationPanel userId={userId} />}
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button size="icon" variant="ghost" data-testid="button-user-menu">
-                  <User className="w-5 h-5" />
+                <Button size="icon" variant="ghost" className="h-8 w-8" data-testid="button-user-menu">
+                  <User className="w-4 h-4" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
@@ -80,7 +81,7 @@ export default function DashboardLayout({
         </div>
       </header>
 
-      <main className="container mx-auto py-6 px-4 md:px-6">{children}</main>
+      <main className="container mx-auto py-3 px-4 md:px-6">{children}</main>
     </div>
   );
 }

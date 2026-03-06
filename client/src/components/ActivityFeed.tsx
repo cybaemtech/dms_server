@@ -47,26 +47,26 @@ export default function ActivityFeed({ activities, maxItems = 10 }: ActivityFeed
   };
 
   return (
-    <Card className="p-6" data-testid="card-activity-feed">
-      <h3 className="text-lg font-semibold mb-4">Recent Activity</h3>
-      <div className="space-y-4">
+    <Card className="p-3.5" data-testid="card-activity-feed">
+      <h3 className="text-base font-semibold mb-3">Recent Activity</h3>
+      <div className="space-y-2">
         {activities.slice(0, maxItems).map((activity, index) => (
           <div
             key={activity.id}
-            className={`flex gap-3 py-3 ${index !== activities.length - 1 ? "border-b" : ""}`}
+            className={`flex gap-2.5 py-1.5 ${index !== activities.length - 1 ? "border-b border-slate-100" : ""}`}
             data-testid={`activity-${activity.id}`}
           >
             <div className="mt-0.5">{getIcon(activity.type)}</div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm text-foreground">
-                <span className="font-medium">{activity.userName}</span>{" "}
+              <p className="text-[11px] text-foreground leading-snug">
+                <span className="font-semibold">{activity.userName}</span>{" "}
                 {getActionText(activity.type)}{" "}
-                <span className="font-medium">{activity.docName}</span>
+                <span className="font-semibold">{activity.docName}</span>
               </p>
               {activity.remarks && (
-                <p className="text-xs text-muted-foreground mt-1 italic">"{activity.remarks}"</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5 italic">"{activity.remarks}"</p>
               )}
-              <p className="text-xs text-muted-foreground mt-1">{activity.timestamp}</p>
+              <p className="text-[9px] text-muted-foreground mt-0.5">{activity.timestamp}</p>
             </div>
           </div>
         ))}

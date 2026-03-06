@@ -100,7 +100,7 @@ export default function DocumentViewDialog({
             <h4 className="text-sm font-semibold text-muted-foreground">Previous Version (Rev {docDetails.previousVersion.revisionNo})</h4>
             <div className="bg-muted/30 p-3 rounded-md space-y-1 text-sm">
               <p><strong>Status:</strong> {docDetails.previousVersion.status}</p>
-              <p><strong>Date:</strong> {new Date(docDetails.previousVersion.dateOfIssue).toLocaleDateString()}</p>
+              <p><strong>Date:</strong> {new Date(docDetails.previousVersion.dateOfIssue).toLocaleDateString('en-GB')}</p>
               {docDetails.previousVersion.approverName && (
                 <p><strong>Approved By:</strong> {docDetails.previousVersion.approverName}</p>
               )}
@@ -110,7 +110,7 @@ export default function DocumentViewDialog({
             <h4 className="text-sm font-semibold text-muted-foreground">Current Version (Rev {docDetails.revisionNo})</h4>
             <div className="bg-primary/10 p-3 rounded-md space-y-1 text-sm">
               <p><strong>Status:</strong> {docDetails.status}</p>
-              <p><strong>Date:</strong> {new Date(docDetails.dateOfIssue).toLocaleDateString()}</p>
+              <p><strong>Date:</strong> {new Date(docDetails.dateOfIssue).toLocaleDateString('en-GB')}</p>
               {docDetails.approverName && (
                 <p><strong>Approved By:</strong> {docDetails.approverName}</p>
               )}
@@ -167,7 +167,7 @@ export default function DocumentViewDialog({
                     Date of Issue
                   </div>
                   <p className="text-sm font-medium">
-                    {document.dateOfIssue ? new Date(document.dateOfIssue).toLocaleDateString() : 'N/A'}
+                    {document.dateOfIssue ? new Date(document.dateOfIssue).toLocaleDateString('en-GB') : 'N/A'}
                   </p>
                 </div>
 
@@ -224,7 +224,7 @@ export default function DocumentViewDialog({
                       Date of Revision
                     </div>
                     <p className="text-sm font-medium">
-                      {new Date(docDetails.dateOfRev).toLocaleDateString()}
+                      {new Date(docDetails.dateOfRev).toLocaleDateString('en-GB')}
                     </p>
                   </div>
                 )}
@@ -236,7 +236,7 @@ export default function DocumentViewDialog({
                       Original Date of Issue
                     </div>
                     <p className="text-sm font-medium">
-                      {new Date(docDetails.originalDateOfIssue).toLocaleDateString()}
+                      {new Date(docDetails.originalDateOfIssue).toLocaleDateString('en-GB')}
                     </p>
                   </div>
                 )}
@@ -248,7 +248,7 @@ export default function DocumentViewDialog({
                       Review Due Date
                     </div>
                     <p className="text-sm font-medium">
-                      {new Date(docDetails.reviewDueDate).toLocaleDateString()}
+                      {new Date(docDetails.reviewDueDate).toLocaleDateString('en-GB')}
                     </p>
                   </div>
                 )}

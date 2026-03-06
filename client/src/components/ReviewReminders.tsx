@@ -83,7 +83,7 @@ export default function ReviewReminders({ daysAhead = 30 }: ReviewRemindersProps
                           : `Due in ${doc.daysUntilDue} day${doc.daysUntilDue !== 1 ? 's' : ''}`
                         }
                       </span>
-                      <span>Review Due: {new Date(doc.reviewDueDate).toLocaleDateString()}</span>
+                      <span>Review Due: {new Date(doc.reviewDueDate).toLocaleDateString('en-GB')}</span>
                     </div>
                   </AlertDescription>
                 </Alert>

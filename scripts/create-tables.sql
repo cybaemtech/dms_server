@@ -19,12 +19,11 @@ BEGIN
     CREATE TABLE departments (
         id NVARCHAR(100) PRIMARY KEY DEFAULT NEWID(),
         name NVARCHAR(255) NOT NULL,
-        code NVARCHAR(50) NOT NULL,
+        code NVARCHAR(50) NULL,
         category NVARCHAR(100) NULL,
         category_name NVARCHAR(255) NULL,
         created_at DATETIME2 NOT NULL DEFAULT GETDATE(),
-        CONSTRAINT UQ_departments_name UNIQUE (name),
-        CONSTRAINT UQ_departments_code UNIQUE (code)
+        CONSTRAINT UQ_departments_name UNIQUE (name)
     );
     PRINT 'Created table: departments';
 END
@@ -223,11 +222,43 @@ GO
 -- =============================================
 IF NOT EXISTS (SELECT 1 FROM departments)
 BEGIN
-    INSERT INTO departments (id, name, code) VALUES ('dept-1', 'Engineering', 'ENG');
-    INSERT INTO departments (id, name, code) VALUES ('dept-2', 'Quality Assurance', 'QA');
-    INSERT INTO departments (id, name, code) VALUES ('dept-3', 'Operations', 'OPS');
-    INSERT INTO departments (id, name, code) VALUES ('dept-4', 'Finance', 'FIN');
-    INSERT INTO departments (id, name, code) VALUES ('dept-5', 'Human Resources', 'HR');
+    INSERT INTO departments (id, name, code) VALUES ('dept-1', 'Production Group - II', '');
+    INSERT INTO departments (id, name, code) VALUES ('dept-2', 'Production Group - III', '');
+    INSERT INTO departments (id, name, code) VALUES ('dept-3', 'Production Group - IV', '');
+    INSERT INTO departments (id, name, code) VALUES ('dept-4', 'Production Group - V', '');
+    INSERT INTO departments (id, name, code) VALUES ('dept-5', 'Production Group - VI', '');
+    INSERT INTO departments (id, name, code) VALUES ('dept-6', 'Plant - A / E & G', '');
+    INSERT INTO departments (id, name, code) VALUES ('dept-7', 'Plant - B', '');
+    INSERT INTO departments (id, name, code) VALUES ('dept-8', 'Plant - B1', '');
+    INSERT INTO departments (id, name, code) VALUES ('dept-9', 'Plant - C & D', '');
+    INSERT INTO departments (id, name, code) VALUES ('dept-10', 'Plant - F', '');
+    INSERT INTO departments (id, name, code) VALUES ('dept-11', 'Blending & Processing', '');
+    INSERT INTO departments (id, name, code) VALUES ('dept-12', 'Production Plant - C', '');
+    INSERT INTO departments (id, name, code) VALUES ('dept-13', 'R&D Dept.', '');
+    INSERT INTO departments (id, name, code) VALUES ('dept-14', 'Quality Control Lab', '');
+    INSERT INTO departments (id, name, code) VALUES ('dept-15', 'Quality Assurance', '');
+    INSERT INTO departments (id, name, code) VALUES ('dept-16', 'Customer Support', '');
+    INSERT INTO departments (id, name, code) VALUES ('dept-17', 'R. M. Store', '');
+    INSERT INTO departments (id, name, code) VALUES ('dept-18', 'Engg. Store', '');
+    INSERT INTO departments (id, name, code) VALUES ('dept-19', 'Local Purchase', '');
+    INSERT INTO departments (id, name, code) VALUES ('dept-20', 'Packing', '');
+    INSERT INTO departments (id, name, code) VALUES ('dept-21', 'Despatch', '');
+    INSERT INTO departments (id, name, code) VALUES ('dept-22', 'E.T.P. and W.T.P. Dept.', '');
+    INSERT INTO departments (id, name, code) VALUES ('dept-23', 'Maintenance', '');
+    INSERT INTO departments (id, name, code) VALUES ('dept-24', 'Project', '');
+    INSERT INTO departments (id, name, code) VALUES ('dept-25', 'E.H.S. Dept.', '');
+    INSERT INTO departments (id, name, code) VALUES ('dept-26', 'M. R. Dept.', '');
+    INSERT INTO departments (id, name, code) VALUES ('dept-27', 'Housekeeping', '');
+    INSERT INTO departments (id, name, code) VALUES ('dept-28', 'H. R. Dept.', '');
+    INSERT INTO departments (id, name, code) VALUES ('dept-29', 'Account Dept.', '');
+    INSERT INTO departments (id, name, code) VALUES ('dept-30', 'I.T. Dept.', '');
+    INSERT INTO departments (id, name, code) VALUES ('dept-31', 'Planning and Despatch', '');
+    INSERT INTO departments (id, name, code) VALUES ('dept-32', 'Export Sales', '');
+    INSERT INTO departments (id, name, code) VALUES ('dept-33', 'Domestic Sales', '');
+    INSERT INTO departments (id, name, code) VALUES ('dept-34', 'Purchase', '');
+    INSERT INTO departments (id, name, code) VALUES ('dept-35', 'Account', '');
+    INSERT INTO departments (id, name, code) VALUES ('dept-36', 'Finance', '');
+    INSERT INTO departments (id, name, code) VALUES ('dept-37', 'Export Documentation', '');
     PRINT 'Inserted seed departments';
 END
 GO
@@ -238,10 +269,10 @@ GO
 IF NOT EXISTS (SELECT 1 FROM users)
 BEGIN
     INSERT INTO users (id, username, password, role, full_name, master_copy_access, department_id)
-    VALUES ('creator-1', 'Priyanka.k@cybaemtech.com', '123', 'creator', 'Priyanka K', 0, 'dept-2');
+    VALUES ('creator-1', 'Priyanka.k@cybaemtech.com', '123', 'creator', 'Priyanka K', 0, 'dept-15');
 
     INSERT INTO users (id, username, password, role, full_name, master_copy_access, department_id)
-    VALUES ('approver-1', 'approver@cybaem.com', '123', 'approver', 'John Approver', 0, 'dept-2');
+    VALUES ('approver-1', 'approver@cybaem.com', '123', 'approver', 'John Approver', 0, 'dept-15');
 
     INSERT INTO users (id, username, password, role, full_name, master_copy_access, department_id)
     VALUES ('issuer-1', 'issuer@cybaem.com', '123', 'issuer', 'Jane Issuer', 1, NULL);

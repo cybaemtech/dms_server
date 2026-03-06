@@ -40,6 +40,8 @@ function Router() {
   const [userFullName, setUserFullName] = useState<string>(session?.userFullName || "");
   const [userLocationState, setUserLocationState] = useState<string>(session?.location || "");
   const [userId, setUserId] = useState<string>(session?.userId || "");
+  const [userDepartmentId, setUserDepartmentId] = useState<string | null>(session?.departmentId || null);
+  const [userDepartmentName, setUserDepartmentName] = useState<string | null>(session?.departmentName || null);
 
   // Update logic to ensure location is always synced
   useEffect(() => {
@@ -133,6 +135,8 @@ function Router() {
       setUserFullName(user.fullName);
       setUserLocationState(user.location || "");
       setUserId(user.id);
+      setUserDepartmentId(user.departmentId || null);
+      setUserDepartmentName(user.departmentName || null);
       setIsAuthenticated(true);
 
       // Save session to localStorage
@@ -141,7 +145,9 @@ function Router() {
         userName: user.username,
         userFullName: user.fullName,
         userId: user.id,
-        location: user.location
+        location: user.location,
+        departmentId: user.departmentId || null,
+        departmentName: user.departmentName || null
       }));
 
       // Navigate to appropriate dashboard
@@ -364,6 +370,8 @@ function Router() {
             onLogout={handleLogout}
             userId={userId}
             userName={userName}
+            departmentId={userDepartmentId}
+            departmentName={userDepartmentName}
           />
         </Route>
         <Route path="/creator/create">
@@ -381,10 +389,10 @@ function Router() {
           />
         </Route>
         <Route path="/approver">
-          <ApproverDashboard onLogout={handleLogout} userId={userId} approverName={userFullName} />
+          <ApproverDashboard onLogout={handleLogout} userId={userId} approverName={userFullName} departmentId={userDepartmentId} departmentName={userDepartmentName} />
         </Route>
         <Route path="/issuer">
-          <IssuerDashboard onLogout={handleLogout} userId={userId} issuerName={userFullName} />
+          <IssuerDashboard onLogout={handleLogout} userId={userId} issuerName={userFullName} departmentId={userDepartmentId} departmentName={userDepartmentName} />
         </Route>
         <Route path="/recipient">
           <RecipientDashboard onLogout={handleLogout} userId={userId} recipientName={userFullName} />

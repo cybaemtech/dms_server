@@ -19,6 +19,7 @@ interface IssuerDashboardProps {
   userId?: string;
   issuerName?: string;
   departmentId?: string | null;
+  departmentName?: string | null;
 }
 
 interface ApiDocument {
@@ -54,7 +55,7 @@ interface Notification {
   createdAt: string;
 }
 
-export default function IssuerDashboard({ onLogout, userId = "issuer-1", issuerName = "", departmentId = null }: IssuerDashboardProps) {
+export default function IssuerDashboard({ onLogout, userId = "issuer-1", issuerName = "", departmentId = null, departmentName = null }: IssuerDashboardProps) {
   const [issueDialogOpen, setIssueDialogOpen] = useState(false);
   const [declineDialogOpen, setDeclineDialogOpen] = useState(false);
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
@@ -92,6 +93,24 @@ export default function IssuerDashboard({ onLogout, userId = "issuer-1", issuerN
       return response.json();
     },
     refetchInterval: 5000,
+  });
+
+  // Fetch ALL issued documents for other departments
+  const { data: allIssuedDocuments = [] } = useQuery<ApiDocument[]>({
+    queryKey: ["/api/documents", "all-issued-issuer"],
+    queryFn: async () => {
+      const response = await fetch("/api/documents?status=issued");
+      if (!response.ok) throw new Error("Failed to fetch all issued documents");
+      return response.json();
+    },
+    refetchInterval: 10000,
+  });
+
+  // Other department issued documents
+  const otherDeptIssuedDocs = allIssuedDocuments.filter(doc => {
+    if (!departmentId) return false;
+    const docDeptIds = doc.departments?.map(d => d.id) || [];
+    return !docDeptIds.includes(departmentId);
   });
 
   const { data: notifications = [] } = useQuery<Notification[]>({
@@ -244,9 +263,10 @@ export default function IssuerDashboard({ onLogout, userId = "issuer-1", issuerN
       revisionNo: doc.revisionNo,
       preparedBy: doc.preparerName || "Unknown",
       location: (doc as any).location,
-      dateOfRev: (doc as any).dateOfRev && !isNaN(new Date((doc as any).dateOfRev).getTime()) 
-        ? new Date((doc as any).dateOfRev).toISOString().split('T')[0] 
-        : null
+      dateOfRev: (doc as any).dateOfRev && !isNaN(new Date((doc as any).dateOfRev).getTime())
+        ? new Date((doc as any).dateOfRev).toISOString().split('T')[0]
+        : null,
+      departments: doc.departments
     }));
   };
 
@@ -260,9 +280,10 @@ export default function IssuerDashboard({ onLogout, userId = "issuer-1", issuerN
       revisionNo: doc.revisionNo,
       preparedBy: doc.preparerName || "Unknown",
       location: (doc as any).location,
-      dateOfRev: (doc as any).dateOfRev && !isNaN(new Date((doc as any).dateOfRev).getTime()) 
-        ? new Date((doc as any).dateOfRev).toISOString().split('T')[0] 
-        : null
+      dateOfRev: (doc as any).dateOfRev && !isNaN(new Date((doc as any).dateOfRev).getTime())
+        ? new Date((doc as any).dateOfRev).toISOString().split('T')[0]
+        : null,
+      departments: doc.departments
     }));
   };
 
@@ -280,15 +301,15 @@ export default function IssuerDashboard({ onLogout, userId = "issuer-1", issuerN
       notificationCount={unreadNotifications}
       onLogout={onLogout}
     >
-      <div className="space-y-6">
+      <div className="space-y-4">
         <div>
-          <h2 className="text-3xl font-semibold text-foreground">Document Issuance</h2>
-          <p className="text-sm text-muted-foreground mt-1">
+          <h2 className="text-lg font-bold text-foreground">Document Issuance</h2>
+          <p className="text-xs text-muted-foreground">
             Final review and issue approved documents
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
           <StatCard
             title="Pending Issue"
             value={approvedDocuments.length}
@@ -319,10 +340,10 @@ export default function IssuerDashboard({ onLogout, userId = "issuer-1", issuerN
           />
         </div>
 
-        <Card className="p-6">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-lg font-semibold">Approved - Ready to Issue</h3>
-            <Button variant="outline" size="sm" data-testid="button-export">
+        <Card className="p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-base font-semibold">Approved - Ready to Issue</h3>
+            <Button variant="outline" size="sm" className="h-8 text-xs font-bold" data-testid="button-export">
               Export Log
             </Button>
           </div>
@@ -350,11 +371,13 @@ export default function IssuerDashboard({ onLogout, userId = "issuer-1", issuerN
           )}
         </Card>
 
-        <Card className="p-6">
-          <h3 className="text-lg font-semibold mb-4">Recently Issued Documents</h3>
+        <Card className="p-4">
+          <h3 className="text-base font-semibold mb-3">
+            {departmentName ? `Your Department (${departmentName}) - Issued Documents` : "Recently Issued Documents"}
+          </h3>
           {issuedDocuments.length > 0 ? (
             <DocumentTable
-              documents={transformedIssuedDocs(issuedDocuments.slice(0, 5))}
+              documents={transformedIssuedDocs(issuedDocuments.slice(0, 10))}
               onView={handleViewPDF}
               showActions={true}
               showLocation={true}
@@ -362,18 +385,33 @@ export default function IssuerDashboard({ onLogout, userId = "issuer-1", issuerN
           ) : (
             <div className="border rounded-lg p-12 text-center">
               <Send className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-              <p className="text-sm text-muted-foreground">No issued documents yet</p>
+              <p className="text-sm text-muted-foreground">No issued documents in your department yet</p>
             </div>
           )}
         </Card>
 
-        <Card className="p-6">
-          <h3 className="text-lg font-semibold mb-4">Document Workflow</h3>
+        {departmentId && otherDeptIssuedDocs.length > 0 && (
+          <Card className="p-4">
+            <h3 className="text-base font-semibold mb-3">Other Departments - Issued Documents</h3>
+            <DocumentTable
+              documents={transformedIssuedDocs(otherDeptIssuedDocs)}
+              onView={handleViewPDF}
+              showActions={true}
+              showLocation={true}
+            />
+          </Card>
+        )}
+
+        <Card className="p-4">
+          <h3 className="text-base font-semibold mb-3">Document Workflow</h3>
           <WorkflowProgress currentStep="Issuer" />
           <div className="mt-6 p-4 bg-muted/30 rounded-lg">
             <p className="text-sm text-muted-foreground">
               <strong>Your Role:</strong> Perform final review, issue documents with controlled PDF
               conversion, assign control copy numbers, and manage version history access.
+            </p>
+            <p className="text-sm text-muted-foreground mt-2">
+              <strong>Note:</strong> Issued documents can be printed only once per system policy.
             </p>
           </div>
         </Card>

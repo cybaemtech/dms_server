@@ -10,6 +10,7 @@ import { WordDocumentViewer } from "@/components/WordDocumentViewer";
 import PDFViewer from "@/components/PDFViewer";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FileText, Clock, CheckCircle, Send } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { DocumentStatus } from "@/components/StatusBadge";
@@ -19,6 +20,7 @@ interface ApproverDashboardProps {
   userId?: string;
   approverName?: string;
   departmentId?: string | null;
+  departmentName?: string | null;
 }
 
 interface ApiDocument {
@@ -52,7 +54,8 @@ export default function ApproverDashboard({
   onLogout,
   userId = "approver-1",
   approverName = "",
-  departmentId = null
+  departmentId = null,
+  departmentName = null
 }: ApproverDashboardProps) {
   const [approveDialogOpen, setApproveDialogOpen] = useState(false);
   const [declineDialogOpen, setDeclineDialogOpen] = useState(false);
@@ -103,6 +106,21 @@ export default function ApproverDashboard({
       return response.json();
     },
     refetchInterval: 5000,
+  });
+
+  // "All Issued" tab = only docs issued to approver's own department
+  const { data: allIssuedDocuments = [] } = useQuery<ApiDocument[]>({
+    queryKey: ["/api/documents", "all-issued-approver", departmentId],
+    queryFn: async () => {
+      // Only show documents issued to this approver's department
+      const url = departmentId
+        ? `/api/documents/department/${departmentId}?status=issued`
+        : `/api/documents?status=issued`;
+      const response = await fetch(url);
+      if (!response.ok) throw new Error("Failed to fetch all issued documents");
+      return response.json();
+    },
+    refetchInterval: 10000,
   });
 
   const { data: notifications = [] } = useQuery<Notification[]>({
@@ -228,13 +246,15 @@ export default function ApproverDashboard({
     }
   };
 
-  const handleApprove = (doc: ApiDocument) => {
-    setSelectedDoc(doc);
+  const handleApprove = (doc: Document) => {
+    const fullDoc = pendingDocs.find(d => d.id === doc.id) || doc as unknown as ApiDocument;
+    setSelectedDoc(fullDoc);
     setApproveDialogOpen(true);
   };
 
-  const handleDecline = (doc: ApiDocument) => {
-    setSelectedDoc(doc);
+  const handleDecline = (doc: Document) => {
+    const fullDoc = pendingDocs.find(d => d.id === doc.id) || doc as unknown as ApiDocument;
+    setSelectedDoc(fullDoc);
     setDeclineDialogOpen(true);
   };
 
@@ -264,7 +284,8 @@ export default function ApproverDashboard({
     revisionNo: doc.revisionNo,
     preparedBy: doc.preparerName || 'Unknown',
     location: doc.location,
-    dateOfRev: doc.dateOfRev ? new Date(doc.dateOfRev).toISOString().split('T')[0] : null
+    dateOfRev: doc.dateOfRev ? new Date(doc.dateOfRev).toISOString().split('T')[0] : null,
+    departments: doc.departments
   }));
 
   const transformedIssuedDocs: Document[] = issuedDocuments.map(doc => ({
@@ -276,7 +297,21 @@ export default function ApproverDashboard({
     revisionNo: doc.revisionNo,
     preparedBy: doc.preparerName || 'Unknown',
     location: doc.location,
-    dateOfRev: doc.dateOfRev ? new Date(doc.dateOfRev).toISOString().split('T')[0] : null
+    dateOfRev: doc.dateOfRev ? new Date(doc.dateOfRev).toISOString().split('T')[0] : null,
+    departments: doc.departments
+  }));
+
+  const transformedAllIssuedDocs: Document[] = allIssuedDocuments.map(doc => ({
+    id: doc.id,
+    docName: doc.docName,
+    docNumber: doc.docNumber,
+    status: "Issued" as const,
+    dateOfIssue: doc.dateOfIssue ? new Date(doc.dateOfIssue).toISOString().split('T')[0] : '',
+    revisionNo: doc.revisionNo,
+    preparedBy: doc.preparerName || 'Unknown',
+    location: doc.location,
+    dateOfRev: doc.dateOfRev ? new Date(doc.dateOfRev).toISOString().split('T')[0] : null,
+    departments: doc.departments
   }));
 
   return (
@@ -287,15 +322,15 @@ export default function ApproverDashboard({
       notificationCount={unreadNotifications}
       onLogout={onLogout}
     >
-      <div className="space-y-6">
+      <div className="space-y-4">
         <div>
-          <h2 className="text-3xl font-semibold text-foreground">Pending Approvals</h2>
-          <p className="text-sm text-muted-foreground mt-1">
+          <h2 className="text-lg font-bold text-foreground">Pending Approvals</h2>
+          <p className="text-xs text-muted-foreground">
             Review and approve documents for issuance
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <StatCard
             title="Pending Approval"
             value={pendingDocs.length}
@@ -319,10 +354,10 @@ export default function ApproverDashboard({
           />
         </div>
 
-        <Card className="p-6">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-lg font-semibold">Documents Awaiting Review</h3>
-            <Button variant="outline" size="sm" data-testid="button-export">
+        <Card className="p-4">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-base font-semibold">Documents Awaiting Review</h3>
+            <Button variant="outline" size="sm" className="h-8 text-xs font-bold" data-testid="button-export">
               Export Log
             </Button>
           </div>
@@ -344,30 +379,62 @@ export default function ApproverDashboard({
           )}
         </Card>
 
-        <Card className="p-6">
-          <h3 className="text-lg font-semibold mb-4">Issued Documents (View as PDF)</h3>
-          {transformedIssuedDocs.length > 0 ? (
-            <DocumentTable
-              documents={transformedIssuedDocs.slice(0, 10)}
-              onView={handleViewPDF}
-              showActions={true}
-              showLocation={true}
-            />
-          ) : (
-            <div className="border rounded-lg p-12 text-center">
-              <Send className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-              <p className="text-sm text-muted-foreground">No issued documents yet</p>
+        <Card className="p-4">
+          <Tabs defaultValue="my-department" className="w-full">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-base font-semibold">Issued Documents</h3>
+              <TabsList>
+                <TabsTrigger value="my-department">My Department</TabsTrigger>
+                <TabsTrigger value="all-issued">All Issued</TabsTrigger>
+              </TabsList>
             </div>
-          )}
+
+            <TabsContent value="my-department">
+              {transformedIssuedDocs.length > 0 ? (
+                <DocumentTable
+                  documents={transformedIssuedDocs.slice(0, 10)}
+                  onView={handleViewPDF}
+                  showActions={true}
+                  showLocation={true}
+                />
+              ) : (
+                <div className="border rounded-lg p-12 text-center">
+                  <Send className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+                  <p className="text-sm text-muted-foreground">No issued documents in your department yet</p>
+                </div>
+              )}
+            </TabsContent>
+
+            <TabsContent value="all-issued">
+              {transformedAllIssuedDocs.length > 0 ? (
+                <DocumentTable
+                  documents={transformedAllIssuedDocs.slice(0, 10)}
+                  onView={handleViewPDF}
+                  showActions={true}
+                  showLocation={true}
+                />
+              ) : (
+                <div className="border rounded-lg p-12 text-center">
+                  <Send className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+                  <p className="text-sm text-muted-foreground">No issued documents found</p>
+                </div>
+              )}
+            </TabsContent>
+          </Tabs>
         </Card>
 
-        <Card className="p-6">
-          <h3 className="text-lg font-semibold mb-4">Document Workflow</h3>
+
+
+        <Card className="p-4">
+          <h3 className="text-base font-semibold mb-3">Document Workflow</h3>
           <WorkflowProgress currentStep="Approver" />
           <div className="mt-6 p-4 bg-muted/30 rounded-lg">
             <p className="text-sm text-muted-foreground">
               <strong>Your Role:</strong> Review documents with auto-generated headers/footers,
               approve or decline with remarks, and select departments for document sharing.
+            </p>
+            <p className="text-sm text-muted-foreground mt-2">
+              <strong>Note:</strong> Issued documents can be printed only once per system policy.
             </p>
           </div>
         </Card>
@@ -429,6 +496,6 @@ export default function ApproverDashboard({
         onClose={() => setPdfViewerOpen(false)}
         documentName={pdfDocName}
       />
-    </DashboardLayout>
+    </DashboardLayout >
   );
 }

@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import DashboardLayout from "@/components/DashboardLayout";
 import StatCard from "@/components/StatCard";
 import DocumentTable, { Document } from "@/components/DocumentTable";
+import PDFViewer from "@/components/PDFViewer";
 import ActivityFeed from "@/components/ActivityFeed";
 import DocumentViewDialog from "@/components/DocumentViewDialog";
 import DocumentEditDialog from "@/components/DocumentEditDialog";
@@ -20,6 +21,8 @@ interface CreatorDashboardProps {
   onLogout?: () => void;
   userId?: string;
   userName?: string;
+  departmentId?: string | null;
+  departmentName?: string | null;
 }
 
 interface ApiDocument {
@@ -69,13 +72,18 @@ export default function CreatorDashboardWithAPI({
   onCreateDocument,
   onLogout,
   userId = "creator-1",
-  userName = "Creator User"
+  userName = "Creator User",
+  departmentId = null,
+  departmentName = null
 }: CreatorDashboardProps) {
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedDoc, setSelectedDoc] = useState<ApiDocument | null>(null);
   const [viewDoc, setViewDoc] = useState<Document | null>(null);
+  const [pdfViewerOpen, setPdfViewerOpen] = useState(false);
+  const [pdfDocId, setPdfDocId] = useState<string>("");
+  const [pdfDocName, setPdfDocName] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState("");
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -90,15 +98,21 @@ export default function CreatorDashboardWithAPI({
     refetchInterval: 5000,
   });
 
+  // "All Active" = all issued docs that include this user's department (approved-for-department filter)
   const { data: allIssuedDocuments = [], isLoading: allIssuedLoading } = useQuery<ApiDocument[]>({
-    queryKey: ["/api/documents", "all-issued"],
+    queryKey: ["/api/documents", "all-issued", departmentId],
     queryFn: async () => {
-      const response = await fetch(`/api/documents?status=issued`);
+      // If user has a department, only show docs issued to that department
+      const url = departmentId
+        ? `/api/documents/department/${departmentId}?status=issued`
+        : `/api/documents?status=issued`;
+      const response = await fetch(url);
       if (!response.ok) throw new Error("Failed to fetch issued documents");
       return response.json();
     },
     refetchInterval: 10000,
   });
+
 
   const { data: notifications = [] } = useQuery<Notification[]>({
     queryKey: ["/api/notifications", userId],
@@ -176,8 +190,14 @@ export default function CreatorDashboardWithAPI({
   const unreadNotifications = notifications.filter(n => !n.isRead).length;
 
   const handleView = (doc: Document) => {
-    setViewDoc(doc);
-    setViewDialogOpen(true);
+    if (doc.status === "Issued") {
+      setPdfDocId(doc.id);
+      setPdfDocName(doc.docName);
+      setPdfViewerOpen(true);
+    } else {
+      setViewDoc(doc);
+      setViewDialogOpen(true);
+    }
   };
 
   const handleEdit = (doc: Document) => {
@@ -194,7 +214,7 @@ export default function CreatorDashboardWithAPI({
       onCreateDocument?.({
         docName: fullDoc.docName,
         docNumber: fullDoc.docNumber,
-        revisionNumber: (fullDoc.revisionNo + 1).toString(),
+        dateOfIssue: fullDoc.dateOfIssue,
         location: fullDoc.location || "",
         previousVersionId: fullDoc.id
       });
@@ -252,7 +272,8 @@ export default function CreatorDashboardWithAPI({
         revisionNo: doc.revisionNo,
         preparedBy: doc.preparerName || 'Unknown',
         location: doc.location,
-        dateOfRev: doc.dateOfRev ? new Date(doc.dateOfRev).toISOString().split('T')[0] : null
+        dateOfRev: doc.dateOfRev ? new Date(doc.dateOfRev).toISOString().split('T')[0] : null,
+        departments: doc.departments
       }));
   };
 
@@ -276,21 +297,22 @@ export default function CreatorDashboardWithAPI({
       notificationCount={unreadNotifications}
       onLogout={onLogout}
     >
-      <div className="space-y-4">
+      <div className="space-y-3">
         <div className="flex items-center justify-between gap-4">
           <div>
-            <h2 className="text-2xl font-bold text-foreground">Creator Dashboard</h2>
-            <p className="text-xs text-muted-foreground">
-              Manage your document lifecycle and view issued documents
+            <h2 className="text-lg font-bold text-foreground">Creator Dashboard</h2>
+            <p className="text-[11px] text-muted-foreground">
+              Manage your document lifecycle and view issued documents.
+              <span className="block mt-0.5 font-semibold">Note: Issued documents can be printed only once per system policy.</span>
             </p>
           </div>
-          <Button size="sm" onClick={() => onCreateDocument?.()} data-testid="button-create-document">
-            <Plus className="w-4 h-4 mr-1.5" />
+          <Button size="sm" className="h-8 text-xs px-3" onClick={() => onCreateDocument?.()} data-testid="button-create-document">
+            <Plus className="w-3.5 h-3.5 mr-1.5" />
             New Document
           </Button>
         </div>
 
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
           <StatCard
             title="Total"
             value={myDocuments.length}
@@ -317,30 +339,33 @@ export default function CreatorDashboardWithAPI({
           />
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-          <div className="lg:col-span-3 space-y-4">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-3">
+          <div className="lg:col-span-3 space-y-3">
             <div className="relative">
-              <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Search className="absolute left-2 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
               <Input
                 placeholder="Search documents by name or number..."
-                className="pl-8 h-9 text-sm"
+                className="pl-8 h-8 text-[11px] bg-white"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
 
             <Tabs defaultValue="pending" className="w-full">
-              <TabsList className="h-9 p-1">
-                <TabsTrigger value="pending" className="text-xs px-3">
+              <TabsList className="h-8 p-0.5 bg-slate-100">
+                <TabsTrigger value="pending" className="text-[11px] h-7 px-2">
                   Pending ({pendingDocs.length})
                 </TabsTrigger>
-                <TabsTrigger value="approved" className="text-xs px-3">
+                <TabsTrigger value="approved" className="text-[11px] h-7 px-2">
                   Approved ({approvedDocs.length})
                 </TabsTrigger>
-                <TabsTrigger value="issued" className="text-xs px-3">
-                  Active (All)
+                <TabsTrigger value="issued" className="text-[11px] h-7 px-2">
+                  My Active
                 </TabsTrigger>
-                <TabsTrigger value="declined" className="text-xs px-3">
+                <TabsTrigger value="all-issued" className="text-[11px] h-7 px-2">
+                  All Active
+                </TabsTrigger>
+                <TabsTrigger value="declined" className="text-[11px] h-7 px-2">
                   Declined
                 </TabsTrigger>
               </TabsList>
@@ -374,11 +399,25 @@ export default function CreatorDashboardWithAPI({
               </TabsContent>
 
               <TabsContent value="issued" className="mt-2">
+                <h4 className="text-sm font-semibold text-foreground mb-2">
+                  {departmentName ? `My Department (${departmentName}) — Issued` : "My Dept Issued"}
+                </h4>
                 <DocumentTable
                   documents={transformedDocs(allIssuedDocuments)}
                   onView={handleView}
                   onDownload={handleDownload}
-                  onRevise={handleRevise}
+                  showLocation={true}
+                />
+              </TabsContent>
+
+              <TabsContent value="all-issued" className="mt-2">
+                <h4 className="text-sm font-semibold text-foreground mb-2">
+                  {departmentName ? `All Issued to ${departmentName}` : "All Issued Documents"}
+                </h4>
+                <DocumentTable
+                  documents={transformedDocs(allIssuedDocuments)}
+                  onView={handleView}
+                  onDownload={handleDownload}
                   showLocation={true}
                 />
               </TabsContent>
@@ -410,7 +449,6 @@ export default function CreatorDashboardWithAPI({
         open={viewDialogOpen}
         onClose={() => setViewDialogOpen(false)}
         onDownload={handleDownload}
-        currentUserId={userId}
       />
 
       <DocumentEditDialog
@@ -439,6 +477,14 @@ export default function CreatorDashboardWithAPI({
         onConfirm={confirmDelete}
         title="Delete Document"
         description={`Delete "${selectedDoc?.docName}"? This cannot be undone.`}
+      />
+
+      <PDFViewer
+        documentId={pdfDocId}
+        userId={userId}
+        open={pdfViewerOpen}
+        onClose={() => setPdfViewerOpen(false)}
+        documentName={pdfDocName}
       />
     </DashboardLayout>
   );

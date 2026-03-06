@@ -42,14 +42,14 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { 
-  FileText, 
-  Users, 
-  Building2, 
-  CheckCircle, 
-  Clock, 
-  XCircle, 
-  Send, 
+import {
+  FileText,
+  Users,
+  Building2,
+  CheckCircle,
+  Clock,
+  XCircle,
+  Send,
   Download,
   TrendingUp,
   UserCheck,
@@ -184,7 +184,6 @@ const userFormSchema = z.object({
 
 const departmentFormSchema = z.object({
   name: z.string().min(1, "Department name is required"),
-  code: z.string().min(1, "Department code is required").max(10, "Code must be 10 characters or less"),
 });
 
 type UserFormValues = z.infer<typeof userFormSchema>;
@@ -231,18 +230,18 @@ const cardVariants = {
 
 const COLORS = ['hsl(var(--primary))', 'hsl(var(--chart-2))', 'hsl(var(--chart-3))', 'hsl(var(--destructive))'];
 
-function StatCardAnimated({ 
-  title, 
-  value, 
-  icon: Icon, 
-  trend, 
+function StatCardAnimated({
+  title,
+  value,
+  icon: Icon,
+  trend,
   trendUp,
   color,
-  delay = 0 
-}: { 
-  title: string; 
-  value: number; 
-  icon: React.ElementType; 
+  delay = 0
+}: {
+  title: string;
+  value: number;
+  icon: React.ElementType;
   trend?: string;
   trendUp?: boolean;
   color: string;
@@ -256,13 +255,13 @@ function StatCardAnimated({
       whileHover="hover"
       transition={{ delay }}
     >
-      <Card className="p-6 relative overflow-visible" data-testid={`card-stat-${title.toLowerCase().replace(/\s+/g, '-')}`}>
-        <div className="flex items-start justify-between gap-4">
-          <div className="space-y-2">
-            <p className="text-sm font-medium text-muted-foreground">{title}</p>
-            <motion.p 
-              className="text-3xl font-bold text-foreground"
-              initial={{ opacity: 0, y: 10 }}
+      <Card className="p-3 relative overflow-hidden" data-testid={`card-stat-${title.toLowerCase().replace(/\s+/g, '-')}`}>
+        <div className="flex items-start justify-between gap-2.5">
+          <div className="space-y-0.5">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{title}</p>
+            <motion.p
+              className="text-xl font-black text-foreground"
+              initial={{ opacity: 0, y: 5 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: delay + 0.2 }}
               data-testid={`text-value-${title.toLowerCase().replace(/\s+/g, '-')}`}
@@ -270,35 +269,28 @@ function StatCardAnimated({
               {value}
             </motion.p>
             {trend && (
-              <div className="flex items-center gap-1 text-xs">
+              <div className="flex items-center gap-0.5 text-[9px]">
                 {trendUp !== undefined && (
                   trendUp ? (
-                    <ArrowUpRight className="w-3 h-3 text-green-500" />
+                    <ArrowUpRight className="w-2.5 h-2.5 text-green-500" />
                   ) : (
-                    <ArrowDownRight className="w-3 h-3 text-red-500" />
+                    <ArrowDownRight className="w-2.5 h-2.5 text-red-500" />
                   )
                 )}
-                <span className={trendUp ? "text-green-600 dark:text-green-400" : trendUp === false ? "text-red-600 dark:text-red-400" : "text-muted-foreground"}>
+                <span className={trendUp ? "text-green-600 font-bold" : trendUp === false ? "text-red-600 font-bold" : "text-muted-foreground"}>
                   {trend}
                 </span>
               </div>
             )}
           </div>
-          <motion.div 
-            className={`p-3 rounded-xl ${color}`}
-            whileHover={{ rotate: 5, scale: 1.1 }}
+          <motion.div
+            className={`p-1.5 rounded-lg ${color} shadow-sm`}
+            whileHover={{ rotate: 5, scale: 1.05 }}
             transition={{ type: "spring", stiffness: 300 }}
           >
-            <Icon className="w-6 h-6 text-white" />
+            <Icon className="w-4 h-4 text-white" />
           </motion.div>
         </div>
-        <motion.div 
-          className={`absolute bottom-0 left-0 h-1 ${color}`}
-          initial={{ width: 0 }}
-          animate={{ width: "100%" }}
-          transition={{ delay: delay + 0.3, duration: 0.5 }}
-          style={{ borderRadius: "0 0 0 var(--radius)" }}
-        />
       </Card>
     </motion.div>
   );
@@ -358,9 +350,9 @@ function DetailedDocumentCard({ doc, onView }: { doc: ApiDocument; onView: (doc:
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
+      initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className="p-4 rounded-lg border bg-card hover-elevate"
+      className="p-3 rounded-lg border bg-card hover:bg-slate-50 border-slate-200 transition-all"
     >
       <div className="flex items-start justify-between mb-3">
         <div className="flex-1">
@@ -390,14 +382,14 @@ function DetailedDocumentCard({ doc, onView }: { doc: ApiDocument; onView: (doc:
           <Eye className="w-4 h-4" />
         </Button>
       </div>
-      
+
       <div className="space-y-2">
         <div className="flex items-center gap-2 text-xs">
           <Activity className="w-3 h-3 text-blue-500" />
           <span className="font-medium">Current Stage:</span>
           <span className="text-muted-foreground">{getCurrentStage()}</span>
         </div>
-        
+
         {getActionUser() && (
           <div className="flex items-center gap-2 text-xs">
             <Users className="w-3 h-3 text-green-500" />
@@ -408,14 +400,14 @@ function DetailedDocumentCard({ doc, onView }: { doc: ApiDocument; onView: (doc:
             )}
           </div>
         )}
-        
+
         {getRemarks() && (
           <div className="mt-2 p-2 rounded bg-muted/30">
             <p className="text-xs font-medium text-foreground mb-1">Review Comments:</p>
             <p className="text-xs text-muted-foreground italic">"{getRemarks()}"</p>
           </div>
         )}
-        
+
         {doc.departments && doc.departments.length > 0 && (
           <div className="flex items-center gap-1 flex-wrap">
             <span className="text-xs font-medium">Departments:</span>
@@ -429,14 +421,14 @@ function DetailedDocumentCard({ doc, onView }: { doc: ApiDocument; onView: (doc:
             )}
           </div>
         )}
-        
+
         <div className="flex items-center justify-between text-xs text-muted-foreground pt-1 border-t">
-          <span>Created: {doc.createdAt ? new Date(doc.createdAt).toLocaleDateString() : 'Unknown'}</span>
+          <span>Created: {doc.createdAt ? new Date(doc.createdAt).toLocaleDateString('en-GB') : 'Unknown'}</span>
           {doc.approvedAt && (
-            <span>Approved: {new Date(doc.approvedAt).toLocaleDateString()}</span>
+            <span>Approved: {new Date(doc.approvedAt).toLocaleDateString('en-GB')}</span>
           )}
           {doc.issuedAt && (
-            <span>Issued: {new Date(doc.issuedAt).toLocaleDateString()}</span>
+            <span>Issued: {new Date(doc.issuedAt).toLocaleDateString('en-GB')}</span>
           )}
         </div>
       </div>
@@ -444,16 +436,16 @@ function DetailedDocumentCard({ doc, onView }: { doc: ApiDocument; onView: (doc:
   );
 }
 
-function UserCard({ user, role, index, onDelete, onEdit }: { 
-  user: { 
-    id: string; 
-    fullName: string; 
-    username: string; 
+function UserCard({ user, role, index, onDelete, onEdit }: {
+  user: {
+    id: string;
+    fullName: string;
+    username: string;
     departmentName?: string;
     departmentCode?: string;
     location?: string;
-  }; 
-  role: string; 
+  };
+  role: string;
   index: number;
   onDelete: (userId: string) => void;
   onEdit: (user: any) => void;
@@ -471,12 +463,12 @@ function UserCard({ user, role, index, onDelete, onEdit }: {
       initial={{ opacity: 0, x: -20 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ delay: index * 0.05 }}
-      className="flex items-center justify-between p-3 rounded-lg bg-muted/30 hover-elevate"
+      className="flex items-center justify-between p-2 rounded-lg bg-muted/20 border border-transparent hover:border-slate-200 hover:bg-white transition-all"
       data-testid={`user-card-${user.id}`}
     >
-      <div className="flex items-center gap-3 flex-1">
-        <Avatar className="h-10 w-10">
-          <AvatarFallback className="bg-primary/10 text-primary font-medium">
+      <div className="flex items-center gap-2 flex-1">
+        <Avatar className="h-8 w-8">
+          <AvatarFallback className="bg-primary/10 text-primary text-[10px] font-bold">
             {user.fullName.split(' ').map(n => n[0]).join('').toUpperCase()}
           </AvatarFallback>
         </Avatar>
@@ -570,7 +562,7 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
     resolver: zodResolver(departmentFormSchema),
     defaultValues: {
       name: "",
-      code: "",
+      code: "", // Keeping this empty string to satisfy types if needed, but the field is removed from form
     },
   });
 
@@ -839,29 +831,29 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
       notificationCount={0}
       onLogout={onLogout}
     >
-      <motion.div 
-        className="space-y-6"
+      <motion.div
+        className="space-y-3.5"
         variants={containerVariants}
         initial="hidden"
         animate="visible"
       >
         <motion.div variants={itemVariants} className="flex items-center justify-between flex-wrap gap-4">
           <div>
-            <h2 className="text-3xl font-bold text-foreground">Admin Dashboard</h2>
-            <p className="text-sm text-muted-foreground mt-1">
+            <h2 className="text-lg font-bold text-foreground">Admin Dashboard</h2>
+            <p className="text-[11px] text-muted-foreground">
               Complete system oversight with real-time analytics
             </p>
           </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <Button onClick={handleExportLogs} data-testid="button-export-logs">
-              <Download className="w-4 h-4 mr-2" />
+          <div className="flex items-center gap-2 flex-wrap bg-slate-100 p-1 rounded-lg">
+            <Button size="sm" className="h-8 text-xs font-bold" onClick={handleExportLogs} data-testid="button-export-logs">
+              <Download className="w-3.5 h-3.5 mr-1.5" />
               Export Report
             </Button>
           </div>
         </motion.div>
 
-        <motion.div 
-          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4"
+        <motion.div
+          className="grid grid-cols-2 lg:grid-cols-4 gap-2.5"
           variants={containerVariants}
         >
           <StatCardAnimated
@@ -900,45 +892,45 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
           />
         </motion.div>
 
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full space-y-3.5">
           <motion.div variants={itemVariants}>
-            <TabsList className="grid w-full grid-cols-4">
-              <TabsTrigger value="overview" className="gap-2">
-                <BarChart3 className="w-4 h-4" />
+            <TabsList className="bg-slate-100 p-0.5 h-9">
+              <TabsTrigger value="overview" className="gap-2 text-xs h-8 px-4">
+                <BarChart3 className="w-3.5 h-3.5" />
                 Overview
               </TabsTrigger>
-              <TabsTrigger value="documents" className="gap-2">
-                <FileText className="w-4 h-4" />
+              <TabsTrigger value="documents" className="gap-2 text-xs h-8 px-4">
+                <FileText className="w-3.5 h-3.5" />
                 Documents
               </TabsTrigger>
-              <TabsTrigger value="users" className="gap-2">
-                <Users className="w-4 h-4" />
+              <TabsTrigger value="users" className="gap-2 text-xs h-8 px-4">
+                <Users className="w-3.5 h-3.5" />
                 Users
               </TabsTrigger>
-              <TabsTrigger value="departments" className="gap-2">
-                <Building2 className="w-4 h-4" />
+              <TabsTrigger value="departments" className="gap-2 text-xs h-8 px-4">
+                <Building2 className="w-3.5 h-3.5" />
                 Departments
               </TabsTrigger>
             </TabsList>
           </motion.div>
 
           <AnimatePresence mode="wait">
-            <TabsContent value="overview" className="mt-6">
+            <TabsContent value="overview" className="mt-0 focus-visible:ring-0">
               <motion.div
                 key="overview"
-                initial={{ opacity: 0, y: 20 }}
+                initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
+                exit={{ opacity: 0, y: -10 }}
                 transition={{ duration: 0.3 }}
-                className="grid grid-cols-1 lg:grid-cols-3 gap-6"
+                className="grid grid-cols-1 lg:grid-cols-3 gap-3.5"
               >
-                <Card className="p-6 lg:col-span-2">
-                  <div className="flex items-center justify-between mb-6">
+                <Card className="p-3.5 lg:col-span-2 shadow-sm border-slate-200">
+                  <div className="flex items-center justify-between mb-4">
                     <div>
-                      <h3 className="text-lg font-semibold">Weekly Activity</h3>
-                      <p className="text-sm text-muted-foreground">Documents processed this week</p>
+                      <h3 className="text-base font-semibold">Weekly Activity</h3>
+                      <p className="text-[11px] text-muted-foreground">Documents processed this week</p>
                     </div>
-                    <Activity className="w-5 h-5 text-muted-foreground" />
+                    <Activity className="w-4 h-4 text-muted-foreground" />
                   </div>
                   <div className="h-[300px]">
                     <ResponsiveContainer width="100%" height="100%">
@@ -946,16 +938,16 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
                         <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
                         <XAxis dataKey="day" tick={{ fontSize: 12 }} />
                         <YAxis tick={{ fontSize: 12 }} />
-                        <Tooltip 
-                          contentStyle={{ 
+                        <Tooltip
+                          contentStyle={{
                             backgroundColor: 'hsl(var(--card))',
                             border: '1px solid hsl(var(--border))',
                             borderRadius: '8px'
                           }}
                         />
-                        <Bar 
-                          dataKey="documents" 
-                          fill="hsl(var(--primary))" 
+                        <Bar
+                          dataKey="documents"
+                          fill="hsl(var(--primary))"
                           radius={[4, 4, 0, 0]}
                           animationDuration={1000}
                         />
@@ -964,13 +956,13 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
                   </div>
                 </Card>
 
-                <Card className="p-6">
-                  <div className="flex items-center justify-between mb-6">
+                <Card className="p-3.5">
+                  <div className="flex items-center justify-between mb-3">
                     <div>
-                      <h3 className="text-lg font-semibold">Document Status</h3>
-                      <p className="text-sm text-muted-foreground">Distribution overview</p>
+                      <h3 className="text-base font-semibold">Document Status</h3>
+                      <p className="text-[11px] text-muted-foreground leading-tight">Distribution overview</p>
                     </div>
-                    <TrendingUp className="w-5 h-5 text-muted-foreground" />
+                    <TrendingUp className="w-4 h-4 text-muted-foreground" />
                   </div>
                   <div className="h-[200px]">
                     <ResponsiveContainer width="100%" height="100%">
@@ -996,8 +988,8 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
                   <div className="grid grid-cols-2 gap-2 mt-4">
                     {pieData.map((entry, index) => (
                       <div key={entry.name} className="flex items-center gap-2">
-                        <div 
-                          className="w-3 h-3 rounded-full" 
+                        <div
+                          className="w-3 h-3 rounded-full"
                           style={{ backgroundColor: COLORS[index % COLORS.length] }}
                         />
                         <span className="text-sm text-muted-foreground">
@@ -1008,42 +1000,42 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
                   </div>
                 </Card>
 
-                <Card className="p-6 lg:col-span-2">
-                  <div className="flex items-center justify-between mb-4">
+                <Card className="p-3.5 lg:col-span-2 shadow-sm border-slate-200">
+                  <div className="flex items-center justify-between mb-3">
                     <div>
-                      <h3 className="text-lg font-semibold">Recent Documents</h3>
-                      <p className="text-sm text-muted-foreground">Latest activity in the system</p>
+                      <h3 className="text-base font-semibold">Recent Documents</h3>
+                      <p className="text-[11px] text-muted-foreground">Latest activity in the system</p>
                     </div>
-                    <Calendar className="w-5 h-5 text-muted-foreground" />
+                    <Calendar className="w-4 h-4 text-muted-foreground" />
                   </div>
-                  <ScrollArea className="h-[300px]">
-                    <div className="space-y-3">
+                  <ScrollArea className="h-[250px]">
+                    <div className="space-y-1.5">
                       {stats?.recentDocuments.map((doc, index) => (
                         <motion.div
                           key={`recent-${doc.id || index}`}
                           initial={{ opacity: 0, x: -20 }}
                           animate={{ opacity: 1, x: 0 }}
                           transition={{ delay: index * 0.05 }}
-                          className="flex items-center justify-between p-3 rounded-lg bg-muted/30 hover-elevate"
+                          className="flex items-center justify-between p-2 rounded-lg bg-muted/20 border border-transparent hover:border-slate-200 hover:bg-white transition-all"
                           data-testid={`recent-doc-${doc.id}`}
                         >
-                          <div className="flex items-center gap-3">
-                            <div className="p-2 rounded-lg bg-primary/10">
-                              <FileText className="w-4 h-4 text-primary" />
+                          <div className="flex items-center gap-2">
+                            <div className="p-1.5 rounded-lg bg-primary/10">
+                              <FileText className="w-3.5 h-3.5 text-primary" />
                             </div>
                             <div>
-                              <p className="font-medium text-sm">{doc.docName}</p>
-                              <p className="text-xs text-muted-foreground">{doc.docNumber}</p>
+                              <p className="font-semibold text-xs leading-tight">{doc.docName}</p>
+                              <p className="text-[10px] text-muted-foreground font-mono">{doc.docNumber}</p>
                             </div>
                           </div>
-                          <Badge 
+                          <Badge
                             variant="secondary"
-                            className={
-                              doc.status === 'issued' ? 'bg-green-500/10 text-green-600 dark:text-green-400' :
-                              doc.status === 'approved' ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400' :
-                              doc.status === 'pending' ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400' :
-                              'bg-red-500/10 text-red-600 dark:text-red-400'
-                            }
+                            className={`text-[9px] px-1 py-0 h-4 font-bold ${
+                              doc.status === 'issued' ? 'bg-green-500/10 text-green-600' :
+                                doc.status === 'approved' ? 'bg-blue-500/10 text-blue-600' :
+                                  doc.status === 'pending' ? 'bg-amber-500/10 text-amber-600' :
+                                    'bg-red-500/10 text-red-600'
+                            }`}
                           >
                             {doc.status.charAt(0).toUpperCase() + doc.status.slice(1)}
                           </Badge>
@@ -1059,44 +1051,44 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
                   </ScrollArea>
                 </Card>
 
-                <Card className="p-6">
-                  <div className="flex items-center justify-between mb-4">
+                <Card className="p-3.5">
+                  <div className="flex items-center justify-between mb-3">
                     <div>
-                      <h3 className="text-lg font-semibold">User Breakdown</h3>
-                      <p className="text-sm text-muted-foreground">By role type</p>
+                      <h3 className="text-base font-semibold">User Breakdown</h3>
+                      <p className="text-[11px] text-muted-foreground leading-tight">By role type</p>
                     </div>
-                    <Users className="w-5 h-5 text-muted-foreground" />
+                    <Users className="w-4 h-4 text-muted-foreground" />
                   </div>
-                  <div className="space-y-4">
-                    <div className="space-y-2">
+                  <div className="space-y-3">
+                    <div className="space-y-1">
                       <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <UserCog className="w-4 h-4 text-blue-500" />
-                          <span className="text-sm">Creators</span>
+                        <div className="flex items-center gap-1.5">
+                          <UserCog className="w-3.5 h-3.5 text-blue-500" />
+                          <span className="text-[11px] font-medium">Creators</span>
                         </div>
-                        <span className="font-medium">{stats?.users.creators || 0}</span>
+                        <span className="text-[11px] font-bold">{stats?.users.creators || 0}</span>
                       </div>
-                      <Progress value={(stats?.users.creators || 0) / (stats?.users.total || 1) * 100} className="h-2" />
+                      <Progress value={(stats?.users.creators || 0) / (stats?.users.total || 1) * 100} className="h-1.5" />
                     </div>
-                    <div className="space-y-2">
+                    <div className="space-y-1">
                       <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <UserCheck className="w-4 h-4 text-green-500" />
-                          <span className="text-sm">Approvers</span>
+                        <div className="flex items-center gap-1.5">
+                          <UserCheck className="w-3.5 h-3.5 text-green-500" />
+                          <span className="text-[11px] font-medium">Approvers</span>
                         </div>
-                        <span className="font-medium">{stats?.users.approvers || 0}</span>
+                        <span className="text-[11px] font-bold">{stats?.users.approvers || 0}</span>
                       </div>
-                      <Progress value={(stats?.users.approvers || 0) / (stats?.users.total || 1) * 100} className="h-2" />
+                      <Progress value={(stats?.users.approvers || 0) / (stats?.users.total || 1) * 100} className="h-1.5" />
                     </div>
-                    <div className="space-y-2">
+                    <div className="space-y-1">
                       <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <Send className="w-4 h-4 text-purple-500" />
-                          <span className="text-sm">Issuers</span>
+                        <div className="flex items-center gap-1.5">
+                          <Send className="w-3.5 h-3.5 text-purple-500" />
+                          <span className="text-[11px] font-medium">Issuers</span>
                         </div>
-                        <span className="font-medium">{stats?.users.issuers || 0}</span>
+                        <span className="text-[11px] font-bold">{stats?.users.issuers || 0}</span>
                       </div>
-                      <Progress value={(stats?.users.issuers || 0) / (stats?.users.total || 1) * 100} className="h-2" />
+                      <Progress value={(stats?.users.issuers || 0) / (stats?.users.total || 1) * 100} className="h-1.5" />
                     </div>
                   </div>
                 </Card>
@@ -1111,7 +1103,7 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
                 exit={{ opacity: 0, y: -20 }}
                 transition={{ duration: 0.3 }}
               >
-                <Card className="p-6">
+                <Card className="p-3.5">
                   <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
                     <h3 className="text-lg font-semibold">All Documents</h3>
                     <div className="flex items-center gap-2 flex-wrap">
@@ -1143,69 +1135,70 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
                         </div>
                       ) : documentsData?.documents && documentsData.documents.length > 0 ? (
                         <div className="overflow-x-auto">
-                          <table className="w-full border-collapse text-sm" data-testid="table-admin-documents">
+                          <table className="w-full border-collapse border border-slate-300 text-xs" data-testid="table-admin-documents">
                             <thead>
-                              <tr className="border-b bg-muted/50">
-                                <th className="text-left p-3 font-medium">Doc Number</th>
-                                <th className="text-left p-3 font-medium">Document Name</th>
-                                <th className="text-left p-3 font-medium">Rev</th>
-                                <th className="text-left p-3 font-medium">Status</th>
-                                <th className="text-left p-3 font-medium">Preparer</th>
-                                <th className="text-left p-3 font-medium">Date of Issue</th>
-                                <th className="text-left p-3 font-medium">Departments</th>
-                                <th className="text-left p-3 font-medium">Actions</th>
+                              <tr className="bg-slate-100 border-b border-slate-300">
+                                <th className="text-left px-2 py-1.5 font-bold text-slate-700 uppercase border-r border-slate-300">Doc Number</th>
+                                <th className="text-left px-2 py-1.5 font-bold text-slate-700 uppercase border-r border-slate-300">Document Name</th>
+                                <th className="text-left px-2 py-1.5 font-bold text-slate-700 uppercase border-r border-slate-300">Rev</th>
+                                <th className="text-left px-2 py-1.5 font-bold text-slate-700 uppercase border-r border-slate-300">Status</th>
+                                <th className="text-left px-2 py-1.5 font-bold text-slate-700 uppercase border-r border-slate-300">Preparer</th>
+                                <th className="text-left px-2 py-1.5 font-bold text-slate-700 uppercase border-r border-slate-300">Date of Issue</th>
+                                <th className="text-left px-2 py-1.5 font-bold text-slate-700 uppercase border-r border-slate-300">Departments</th>
+                                <th className="text-left px-2 py-1.5 font-bold text-slate-700 uppercase">Actions</th>
                               </tr>
                             </thead>
                             <tbody>
                               {documentsData.documents.map((doc, index) => (
-                                <tr 
-                                  key={`doc-${doc.id || index}`} 
-                                  className="border-b hover:bg-muted/30 transition-colors"
+                                <tr
+                                  key={`doc-${doc.id || index}`}
+                                  className="border-b border-slate-200 hover:bg-slate-50 even:bg-slate-50/50 transition-colors"
                                   data-testid={`row-document-${doc.id}`}
                                 >
-                                  <td className="p-3 font-mono text-xs">{doc.docNumber}</td>
-                                  <td className="p-3">{doc.docName}</td>
-                                  <td className="p-3 text-center">{doc.revisionNo}</td>
-                                  <td className="p-3">
-                                    <Badge 
-                                      variant="outline" 
-                                      className={
-                                        doc.status.toLowerCase() === 'pending' ? 'bg-amber-500/10 text-amber-600' :
-                                        doc.status.toLowerCase() === 'approved' ? 'bg-blue-500/10 text-blue-600' :
-                                        doc.status.toLowerCase() === 'issued' ? 'bg-green-500/10 text-green-600' :
-                                        doc.status.toLowerCase() === 'declined' ? 'bg-red-500/10 text-red-600' :
-                                        'bg-gray-500/10 text-gray-600'
-                                      }
+                                  <td className="px-2 py-1 border-r border-slate-200 font-mono text-[10px] text-slate-600">{doc.docNumber}</td>
+                                  <td className="px-2 py-1 border-r border-slate-200 text-slate-800 font-medium">{doc.docName}</td>
+                                  <td className="px-2 py-1 border-r border-slate-200 text-center text-slate-700">{doc.revisionNo}</td>
+                                  <td className="px-2 py-1 border-r border-slate-200">
+                                    <Badge
+                                      variant="outline"
+                                      className={`text-[9px] px-1 py-0 h-4 ${
+                                        doc.status.toLowerCase() === 'pending' ? 'bg-amber-500/10 text-amber-600 border-amber-200' :
+                                          doc.status.toLowerCase() === 'approved' ? 'bg-blue-500/10 text-blue-600 border-blue-200' :
+                                            doc.status.toLowerCase() === 'issued' ? 'bg-green-500/10 text-green-600 border-green-200' :
+                                              doc.status.toLowerCase() === 'declined' ? 'bg-red-500/10 text-red-600 border-red-200' :
+                                                'bg-gray-500/10 text-gray-600 border-gray-200'
+                                      }`}
                                     >
-                                      {doc.status.charAt(0).toUpperCase() + doc.status.slice(1)}
+                                      {doc.status.toUpperCase()}
                                     </Badge>
                                   </td>
-                                  <td className="p-3">{doc.preparerName || 'Unknown'}</td>
-                                  <td className="p-3">{doc.dateOfIssue ? new Date(doc.dateOfIssue).toLocaleDateString() : '-'}</td>
-                                  <td className="p-3">
+                                  <td className="px-2 py-1 border-r border-slate-200 text-[10px] text-slate-600">{doc.preparerName || 'Unknown'}</td>
+                                  <td className="px-2 py-1 border-r border-slate-200 text-[10px] text-slate-500">{doc.dateOfIssue ? new Date(doc.dateOfIssue).toLocaleDateString('en-GB') : '-'}</td>
+                                  <td className="px-2 py-1 border-r border-slate-200">
                                     {doc.departments && doc.departments.length > 0 ? (
-                                      <span className="text-xs text-muted-foreground">
+                                      <span className="text-[10px] text-slate-500 leading-tight">
                                         {doc.departments.slice(0, 2).map(d => d.name).join(', ')}
                                         {doc.departments.length > 2 && ` +${doc.departments.length - 2}`}
                                       </span>
                                     ) : '-'}
                                   </td>
-                                  <td className="p-3">
+                                  <td className="px-2 py-1">
                                     <Button
                                       size="sm"
                                       variant="ghost"
+                                      className="h-6 w-6 p-0"
                                       onClick={() => handleView({
                                         id: doc.id,
                                         docName: doc.docName,
                                         docNumber: doc.docNumber,
-                                        status: doc.status.charAt(0).toUpperCase() + doc.status.slice(1) as "Pending" | "Approved" | "Declined" | "Issued",
+                                        status: doc.status.charAt(0).toUpperCase() + doc.status.slice(1) as any,
                                         dateOfIssue: doc.dateOfIssue ? new Date(doc.dateOfIssue).toISOString().split('T')[0] : '',
                                         revisionNo: doc.revisionNo,
                                         preparedBy: doc.preparerName || 'Unknown'
                                       })}
                                       data-testid={`button-view-${doc.id}`}
                                     >
-                                      <Eye className="w-4 h-4" />
+                                      <Eye className="w-3.5 h-3.5" />
                                     </Button>
                                   </td>
                                 </tr>
@@ -1232,40 +1225,40 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
                             <p className="text-sm text-amber-700 dark:text-amber-300">Documents waiting for approval or issue.</p>
                           </div>
                           <div className="overflow-x-auto">
-                            <table className="w-full border-collapse text-sm">
+                            <table className="w-full border-collapse border border-slate-300 text-xs">
                               <thead>
-                                <tr className="border-b bg-muted/50">
-                                  <th className="text-left p-3 font-medium">Doc Number</th>
-                                  <th className="text-left p-3 font-medium">Document Name</th>
-                                  <th className="text-left p-3 font-medium">Rev</th>
-                                  <th className="text-left p-3 font-medium">Preparer</th>
-                                  <th className="text-left p-3 font-medium">Date of Issue</th>
-                                  <th className="text-left p-3 font-medium">Departments</th>
-                                  <th className="text-left p-3 font-medium">Actions</th>
+                                <tr className="bg-slate-100 border-b border-slate-300">
+                                  <th className="text-left px-2 py-1.5 font-bold text-slate-700 uppercase border-r border-slate-300">Doc Number</th>
+                                  <th className="text-left px-2 py-1.5 font-bold text-slate-700 uppercase border-r border-slate-300">Document Name</th>
+                                  <th className="text-left px-2 py-1.5 font-bold text-slate-700 uppercase border-r border-slate-300">Rev</th>
+                                  <th className="text-left px-2 py-1.5 font-bold text-slate-700 uppercase border-r border-slate-300">Preparer</th>
+                                  <th className="text-left px-2 py-1.5 font-bold text-slate-700 uppercase border-r border-slate-300">Date of Issue</th>
+                                  <th className="text-left px-2 py-1.5 font-bold text-slate-700 uppercase border-r border-slate-300">Departments</th>
+                                  <th className="text-left px-2 py-1.5 font-bold text-slate-700 uppercase">Actions</th>
                                 </tr>
                               </thead>
                               <tbody>
                                 {pendingDocs.map((doc, index) => (
-                                  <tr key={`pending-${doc.id || index}`} className="border-b hover:bg-muted/30 transition-colors">
-                                    <td className="p-3 font-mono text-xs">{doc.docNumber}</td>
-                                    <td className="p-3">{doc.docName}</td>
-                                    <td className="p-3 text-center">{doc.revisionNo}</td>
-                                    <td className="p-3">{doc.preparerName || 'Unknown'}</td>
-                                    <td className="p-3">{doc.dateOfIssue ? new Date(doc.dateOfIssue).toLocaleDateString() : '-'}</td>
-                                    <td className="p-3">
+                                  <tr key={`pending-${doc.id || index}`} className="border-b border-slate-200 hover:bg-slate-50 even:bg-slate-50/50 transition-colors">
+                                    <td className="px-2 py-1 border-r border-slate-200 font-mono text-[10px] text-slate-600">{doc.docNumber}</td>
+                                    <td className="px-2 py-1 border-r border-slate-200 text-slate-800 font-medium">{doc.docName}</td>
+                                    <td className="px-2 py-1 border-r border-slate-200 text-center text-slate-700">{doc.revisionNo}</td>
+                                    <td className="px-2 py-1 border-r border-slate-200 text-[10px] text-slate-600">{doc.preparerName || 'Unknown'}</td>
+                                    <td className="px-2 py-1 border-r border-slate-200 text-[10px] text-slate-500">{doc.dateOfIssue ? new Date(doc.dateOfIssue).toLocaleDateString('en-GB') : '-'}</td>
+                                    <td className="px-2 py-1 border-r border-slate-200">
                                       {doc.departments && doc.departments.length > 0 ? (
-                                        <span className="text-xs text-muted-foreground">
+                                        <span className="text-[10px] text-slate-500 leading-tight">
                                           {doc.departments.slice(0, 2).map(d => d.name).join(', ')}
                                           {doc.departments.length > 2 && ` +${doc.departments.length - 2}`}
                                         </span>
                                       ) : '-'}
                                     </td>
-                                    <td className="p-3">
-                                      <Button size="sm" variant="ghost" onClick={() => handleView({
+                                    <td className="px-2 py-1">
+                                      <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => handleView({
                                         id: doc.id, docName: doc.docName, docNumber: doc.docNumber,
                                         status: "Pending", dateOfIssue: doc.dateOfIssue ? new Date(doc.dateOfIssue).toISOString().split('T')[0] : '',
                                         revisionNo: doc.revisionNo, preparedBy: doc.preparerName || 'Unknown'
-                                      })}><Eye className="w-4 h-4" /></Button>
+                                      })}><Eye className="w-3.5 h-3.5" /></Button>
                                     </td>
                                   </tr>
                                 ))}
@@ -1292,33 +1285,33 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
                             <p className="text-sm text-blue-700 dark:text-blue-300">Documents approved and waiting for issue.</p>
                           </div>
                           <div className="overflow-x-auto">
-                            <table className="w-full border-collapse text-sm">
+                            <table className="w-full border-collapse border border-slate-300 text-xs">
                               <thead>
-                                <tr className="border-b bg-muted/50">
-                                  <th className="text-left p-3 font-medium">Doc Number</th>
-                                  <th className="text-left p-3 font-medium">Document Name</th>
-                                  <th className="text-left p-3 font-medium">Rev</th>
-                                  <th className="text-left p-3 font-medium">Preparer</th>
-                                  <th className="text-left p-3 font-medium">Approver</th>
-                                  <th className="text-left p-3 font-medium">Approved At</th>
-                                  <th className="text-left p-3 font-medium">Actions</th>
+                                <tr className="bg-slate-100 border-b border-slate-300">
+                                  <th className="text-left px-2 py-1.5 font-bold text-slate-700 uppercase border-r border-slate-300">Doc Number</th>
+                                  <th className="text-left px-2 py-1.5 font-bold text-slate-700 uppercase border-r border-slate-300">Document Name</th>
+                                  <th className="text-left px-2 py-1.5 font-bold text-slate-700 uppercase border-r border-slate-300">Rev</th>
+                                  <th className="text-left px-2 py-1.5 font-bold text-slate-700 uppercase border-r border-slate-300">Preparer</th>
+                                  <th className="text-left px-2 py-1.5 font-bold text-slate-700 uppercase border-r border-slate-300">Approver</th>
+                                  <th className="text-left px-2 py-1.5 font-bold text-slate-700 uppercase border-r border-slate-300">Approved At</th>
+                                  <th className="text-left px-2 py-1.5 font-bold text-slate-700 uppercase">Actions</th>
                                 </tr>
                               </thead>
                               <tbody>
                                 {approvedDocs.map((doc, index) => (
-                                  <tr key={`approved-${doc.id || index}`} className="border-b hover:bg-muted/30 transition-colors">
-                                    <td className="p-3 font-mono text-xs">{doc.docNumber}</td>
-                                    <td className="p-3">{doc.docName}</td>
-                                    <td className="p-3 text-center">{doc.revisionNo}</td>
-                                    <td className="p-3">{doc.preparerName || 'Unknown'}</td>
-                                    <td className="p-3">{doc.approverName || '-'}</td>
-                                    <td className="p-3">{doc.approvedAt ? new Date(doc.approvedAt).toLocaleDateString() : '-'}</td>
-                                    <td className="p-3">
-                                      <Button size="sm" variant="ghost" onClick={() => handleView({
+                                  <tr key={`approved-${doc.id || index}`} className="border-b border-slate-200 hover:bg-slate-50 even:bg-slate-50/50 transition-colors">
+                                    <td className="px-2 py-1 border-r border-slate-200 font-mono text-[10px] text-slate-600">{doc.docNumber}</td>
+                                    <td className="px-2 py-1 border-r border-slate-200 text-slate-800 font-medium">{doc.docName}</td>
+                                    <td className="px-2 py-1 border-r border-slate-200 text-center text-slate-700">{doc.revisionNo}</td>
+                                    <td className="px-2 py-1 border-r border-slate-200 text-[10px] text-slate-600">{doc.preparerName || 'Unknown'}</td>
+                                    <td className="px-2 py-1 border-r border-slate-200 text-[10px] text-slate-600">{doc.approverName || '-'}</td>
+                                    <td className="px-2 py-1 border-r border-slate-200 text-[10px] text-slate-500">{doc.approvedAt ? new Date(doc.approvedAt).toLocaleDateString('en-GB') : '-'}</td>
+                                    <td className="px-2 py-1">
+                                      <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => handleView({
                                         id: doc.id, docName: doc.docName, docNumber: doc.docNumber,
                                         status: "Approved", dateOfIssue: doc.dateOfIssue ? new Date(doc.dateOfIssue).toISOString().split('T')[0] : '',
                                         revisionNo: doc.revisionNo, preparedBy: doc.preparerName || 'Unknown'
-                                      })}><Eye className="w-4 h-4" /></Button>
+                                      })}><Eye className="w-3.5 h-3.5" /></Button>
                                     </td>
                                   </tr>
                                 ))}
@@ -1345,33 +1338,33 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
                             <p className="text-sm text-green-700 dark:text-green-300">Documents that have been issued and are active.</p>
                           </div>
                           <div className="overflow-x-auto">
-                            <table className="w-full border-collapse text-sm">
+                            <table className="w-full border-collapse border border-slate-300 text-xs">
                               <thead>
-                                <tr className="border-b bg-muted/50">
-                                  <th className="text-left p-3 font-medium">Doc Number</th>
-                                  <th className="text-left p-3 font-medium">Document Name</th>
-                                  <th className="text-left p-3 font-medium">Rev</th>
-                                  <th className="text-left p-3 font-medium">Preparer</th>
-                                  <th className="text-left p-3 font-medium">Issuer</th>
-                                  <th className="text-left p-3 font-medium">Issued At</th>
-                                  <th className="text-left p-3 font-medium">Actions</th>
+                                <tr className="bg-slate-100 border-b border-slate-300">
+                                  <th className="text-left px-2 py-1.5 font-bold text-slate-700 uppercase border-r border-slate-300">Doc Number</th>
+                                  <th className="text-left px-2 py-1.5 font-bold text-slate-700 uppercase border-r border-slate-300">Document Name</th>
+                                  <th className="text-left px-2 py-1.5 font-bold text-slate-700 uppercase border-r border-slate-300">Rev</th>
+                                  <th className="text-left px-2 py-1.5 font-bold text-slate-700 uppercase border-r border-slate-300">Preparer</th>
+                                  <th className="text-left px-2 py-1.5 font-bold text-slate-700 uppercase border-r border-slate-300">Issuer</th>
+                                  <th className="text-left px-2 py-1.5 font-bold text-slate-700 uppercase border-r border-slate-300">Issued At</th>
+                                  <th className="text-left px-2 py-1.5 font-bold text-slate-700 uppercase">Actions</th>
                                 </tr>
                               </thead>
                               <tbody>
                                 {issuedDocs.map((doc, index) => (
-                                  <tr key={`issued-${doc.id || index}`} className="border-b hover:bg-muted/30 transition-colors">
-                                    <td className="p-3 font-mono text-xs">{doc.docNumber}</td>
-                                    <td className="p-3">{doc.docName}</td>
-                                    <td className="p-3 text-center">{doc.revisionNo}</td>
-                                    <td className="p-3">{doc.preparerName || 'Unknown'}</td>
-                                    <td className="p-3">{doc.issuerName || '-'}</td>
-                                    <td className="p-3">{doc.issuedAt ? new Date(doc.issuedAt).toLocaleDateString() : '-'}</td>
-                                    <td className="p-3">
-                                      <Button size="sm" variant="ghost" onClick={() => handleView({
+                                  <tr key={`issued-${doc.id || index}`} className="border-b border-slate-200 hover:bg-slate-50 even:bg-slate-50/50 transition-colors">
+                                    <td className="px-2 py-1 border-r border-slate-200 font-mono text-[10px] text-slate-600">{doc.docNumber}</td>
+                                    <td className="px-2 py-1 border-r border-slate-200 text-slate-800 font-medium">{doc.docName}</td>
+                                    <td className="px-2 py-1 border-r border-slate-200 text-center text-slate-700">{doc.revisionNo}</td>
+                                    <td className="px-2 py-1 border-r border-slate-200 text-[10px] text-slate-600">{doc.preparerName || 'Unknown'}</td>
+                                    <td className="px-2 py-1 border-r border-slate-200 text-[10px] text-slate-600">{doc.issuerName || '-'}</td>
+                                    <td className="px-2 py-1 border-r border-slate-200 text-[10px] text-slate-500">{doc.issuedAt ? new Date(doc.issuedAt).toLocaleDateString('en-GB') : '-'}</td>
+                                    <td className="px-2 py-1">
+                                      <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => handleView({
                                         id: doc.id, docName: doc.docName, docNumber: doc.docNumber,
                                         status: "Issued", dateOfIssue: doc.dateOfIssue ? new Date(doc.dateOfIssue).toISOString().split('T')[0] : '',
                                         revisionNo: doc.revisionNo, preparedBy: doc.preparerName || 'Unknown'
-                                      })}><Eye className="w-4 h-4" /></Button>
+                                      })}><Eye className="w-3.5 h-3.5" /></Button>
                                     </td>
                                   </tr>
                                 ))}
@@ -1398,35 +1391,35 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
                             <p className="text-sm text-red-700 dark:text-red-300">Documents that have been declined with comments.</p>
                           </div>
                           <div className="overflow-x-auto">
-                            <table className="w-full border-collapse text-sm">
+                            <table className="w-full border-collapse border border-slate-300 text-xs">
                               <thead>
-                                <tr className="border-b bg-muted/50">
-                                  <th className="text-left p-3 font-medium">Doc Number</th>
-                                  <th className="text-left p-3 font-medium">Document Name</th>
-                                  <th className="text-left p-3 font-medium">Rev</th>
-                                  <th className="text-left p-3 font-medium">Preparer</th>
-                                  <th className="text-left p-3 font-medium">Declined By</th>
-                                  <th className="text-left p-3 font-medium">Remarks</th>
-                                  <th className="text-left p-3 font-medium">Actions</th>
+                                <tr className="bg-slate-100 border-b border-slate-300">
+                                  <th className="text-left px-2 py-1.5 font-bold text-slate-700 uppercase border-r border-slate-300">Doc Number</th>
+                                  <th className="text-left px-2 py-1.5 font-bold text-slate-700 uppercase border-r border-slate-300">Document Name</th>
+                                  <th className="text-left px-2 py-1.5 font-bold text-slate-700 uppercase border-r border-slate-300">Rev</th>
+                                  <th className="text-left px-2 py-1.5 font-bold text-slate-700 uppercase border-r border-slate-300">Preparer</th>
+                                  <th className="text-left px-2 py-1.5 font-bold text-slate-700 uppercase border-r border-slate-300">Declined By</th>
+                                  <th className="text-left px-2 py-1.5 font-bold text-slate-700 uppercase border-r border-slate-300">Remarks</th>
+                                  <th className="text-left px-2 py-1.5 font-bold text-slate-700 uppercase">Actions</th>
                                 </tr>
                               </thead>
                               <tbody>
                                 {declinedDocs.map((doc, index) => (
-                                  <tr key={`declined-${doc.id || index}`} className="border-b hover:bg-muted/30 transition-colors">
-                                    <td className="p-3 font-mono text-xs">{doc.docNumber}</td>
-                                    <td className="p-3">{doc.docName}</td>
-                                    <td className="p-3 text-center">{doc.revisionNo}</td>
-                                    <td className="p-3">{doc.preparerName || 'Unknown'}</td>
-                                    <td className="p-3">{doc.approverName || '-'}</td>
-                                    <td className="p-3 max-w-[200px] truncate" title={doc.declineRemarks || ''}>
+                                  <tr key={`declined-${doc.id || index}`} className="border-b border-slate-200 hover:bg-slate-50 even:bg-slate-50/50 transition-colors">
+                                    <td className="px-2 py-1 border-r border-slate-200 font-mono text-[10px] text-slate-600">{doc.docNumber}</td>
+                                    <td className="px-2 py-1 border-r border-slate-200 text-slate-800 font-medium">{doc.docName}</td>
+                                    <td className="px-2 py-1 border-r border-slate-200 text-center text-slate-700">{doc.revisionNo}</td>
+                                    <td className="px-2 py-1 border-r border-slate-200 text-[10px] text-slate-600">{doc.preparerName || 'Unknown'}</td>
+                                    <td className="px-2 py-1 border-r border-slate-200 text-[10px] text-slate-600">{doc.approverName || '-'}</td>
+                                    <td className="px-2 py-1 border-r border-slate-200 max-w-[150px] truncate text-[10px] text-slate-500" title={doc.declineRemarks || ''}>
                                       {doc.declineRemarks || '-'}
                                     </td>
-                                    <td className="p-3">
-                                      <Button size="sm" variant="ghost" onClick={() => handleView({
+                                    <td className="px-2 py-1">
+                                      <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => handleView({
                                         id: doc.id, docName: doc.docName, docNumber: doc.docNumber,
                                         status: "Declined", dateOfIssue: doc.dateOfIssue ? new Date(doc.dateOfIssue).toISOString().split('T')[0] : '',
                                         revisionNo: doc.revisionNo, preparedBy: doc.preparerName || 'Unknown'
-                                      })}><Eye className="w-4 h-4" /></Button>
+                                      })}><Eye className="w-3.5 h-3.5" /></Button>
                                     </td>
                                   </tr>
                                 ))}
@@ -1465,7 +1458,7 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
                   </Button>
                 </div>
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <Card className="p-6">
+                  <Card className="p-3.5">
                     <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center gap-2">
                         <UserCog className="w-5 h-5 text-blue-500" />
@@ -1488,7 +1481,7 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
                     </ScrollArea>
                   </Card>
 
-                  <Card className="p-6">
+                  <Card className="p-3.5">
                     <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center gap-2">
                         <UserCheck className="w-5 h-5 text-green-500" />
@@ -1511,7 +1504,7 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
                     </ScrollArea>
                   </Card>
 
-                  <Card className="p-6">
+                  <Card className="p-3.5">
                     <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center gap-2">
                         <Send className="w-5 h-5 text-purple-500" />
@@ -1534,7 +1527,7 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
                     </ScrollArea>
                   </Card>
 
-                  <Card className="p-6">
+                  <Card className="p-3.5">
                     <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center gap-2">
                         <Shield className="w-5 h-5 text-orange-500" />
@@ -1584,13 +1577,13 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
                       </Button>
                     </div>
                   </div>
-                  
+
                   {departmentCategories.map((category, categoryIndex) => {
                     const isExpanded = expandedCategories[category.id] ?? false;
                     const displayedDepartments = isExpanded ? category.departments : category.departments.slice(0, 3);
-                    
+
                     return (
-                      <Card key={category.id} className="p-6">
+                      <Card key={category.id} className="p-3.5">
                         <div className="flex items-center justify-between mb-4">
                           <div className="flex items-center gap-3">
                             <div className="p-2 rounded-lg bg-primary/10">
@@ -1624,7 +1617,7 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
                             </Button>
                           )}
                         </div>
-                        
+
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                           {displayedDepartments.map((dept, index) => (
                             <motion.div
@@ -1648,7 +1641,7 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
                             </motion.div>
                           ))}
                         </div>
-                        
+
                         {!isExpanded && category.departments.length > 3 && (
                           <div className="mt-4 text-center">
                             <p className="text-sm text-muted-foreground">
@@ -1698,7 +1691,6 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
                               </div>
                               <div>
                                 <p className="font-medium text-sm">{dept.name}</p>
-                                <p className="text-xs text-muted-foreground">Code: {dept.code}</p>
                                 <p className="text-xs text-muted-foreground">ID: {dept.id}</p>
                               </div>
                             </div>
@@ -1735,7 +1727,7 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
         document={selectedDoc}
         open={viewDialogOpen}
         onClose={() => setViewDialogOpen(false)}
-        onDownload={() => {}}
+        onDownload={() => { }}
       />
 
       {/* Add User Dialog */}
@@ -1777,7 +1769,7 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
                   )}
                 />
               </div>
-              
+
               <div className="grid grid-cols-2 gap-6">
                 <FormField
                   control={userForm.control}
@@ -1837,7 +1829,7 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
                         {departmentCategories.map((category) =>
                           category.departments.map((dept) => (
                             <SelectItem key={dept.id} value={dept.id}>
-                              {dept.name} ({category.name})
+                              {dept.name}
                             </SelectItem>
                           ))
                         )}
@@ -1848,35 +1840,32 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
                 )}
               />
 
-              <div className="grid grid-cols-2 gap-6">
-                <FormField
-                  control={userForm.control}
-                  name="departmentCode"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Department Code</FormLabel>
+              <FormField
+                control={userForm.control}
+                name="location"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Location</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
-                        <Input placeholder="e.g., ENG, QC" {...field} data-testid="input-dept-code" />
+                        <SelectTrigger data-testid="select-location">
+                          <SelectValue placeholder="Select location" />
+                        </SelectTrigger>
                       </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={userForm.control}
-                  name="location"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Location</FormLabel>
-                      <FormControl>
-                        <Input placeholder="e.g., Building A, Floor 2" {...field} data-testid="input-location" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-              
+                      <SelectContent>
+                        <SelectItem value="All">All</SelectItem>
+                        <SelectItem value="Unit 1">Unit 1</SelectItem>
+                        <SelectItem value="Unit 2">Unit 2</SelectItem>
+                        <SelectItem value="Unit 3">Unit 3</SelectItem>
+                        <SelectItem value="HO">HO</SelectItem>
+                        <SelectItem value="Common">Common</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
               <FormField
                 control={userForm.control}
                 name="masterCopyAccess"
@@ -1951,7 +1940,7 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
                   )}
                 />
               </div>
-              
+
               <div className="grid grid-cols-2 gap-6">
                 <FormField
                   control={editUserForm.control}
@@ -2011,7 +2000,7 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
                         {departmentCategories.map((category) =>
                           category.departments.map((dept) => (
                             <SelectItem key={dept.id} value={dept.id}>
-                              {dept.name} ({category.name})
+                              {dept.name}
                             </SelectItem>
                           ))
                         )}
@@ -2022,35 +2011,32 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
                 )}
               />
 
-              <div className="grid grid-cols-2 gap-6">
-                <FormField
-                  control={editUserForm.control}
-                  name="departmentCode"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Department Code</FormLabel>
+              <FormField
+                control={editUserForm.control}
+                name="location"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Location</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
-                        <Input placeholder="e.g., ENG, QC" {...field} />
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select location" />
+                        </SelectTrigger>
                       </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={editUserForm.control}
-                  name="location"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Location</FormLabel>
-                      <FormControl>
-                        <Input placeholder="e.g., Building A, Floor 2" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-              
+                      <SelectContent>
+                        <SelectItem value="All">All</SelectItem>
+                        <SelectItem value="Unit 1">Unit 1</SelectItem>
+                        <SelectItem value="Unit 2">Unit 2</SelectItem>
+                        <SelectItem value="Unit 3">Unit 3</SelectItem>
+                        <SelectItem value="HO">HO</SelectItem>
+                        <SelectItem value="Common">Common</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
               <FormField
                 control={editUserForm.control}
                 name="masterCopyAccess"
@@ -2105,22 +2091,6 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
                     <FormControl>
                       <Input placeholder="e.g., Engineering" {...field} data-testid="input-dept-name" />
                     </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={deptForm.control}
-                name="code"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Department Code</FormLabel>
-                    <FormControl>
-                      <Input placeholder="e.g., ENG" {...field} data-testid="input-dept-code" />
-                    </FormControl>
-                    <FormDescription>
-                      Short code for the department (max 10 characters)
-                    </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}

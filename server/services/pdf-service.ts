@@ -3,6 +3,12 @@ import puppeteer from "puppeteer";
 import path from "path";
 import fs from "fs/promises";
 import { type Document } from "@shared/schema";
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+// If we are in dist, the current directory IS our base, otherwise use project root
+const baseDir = __dirname.includes('dist') ? __dirname : process.cwd();
 
 export interface ControlCopyInfo {
   userId: string;
@@ -12,8 +18,8 @@ export interface ControlCopyInfo {
 }
 
 export class PDFService {
-  private uploadsDir = path.join(process.cwd(), "uploads");
-  private pdfsDir = path.join(process.cwd(), "pdfs");
+  public uploadsDir = path.join(baseDir, "uploads");
+  public pdfsDir = path.join(baseDir, "pdfs");
 
   constructor() { }
 
@@ -133,11 +139,28 @@ export class PDFService {
 <html>
 <head>
   <style>
-    @page { size: A4; margin: 160px 45px 120px 45px; }
-    body { font-family: 'Segoe UI', Calibri, Arial, sans-serif; margin: 0; padding: 0; color: black; background: white; }
+    @page { 
+      size: A4 portrait; 
+      margin: 160px 45px 120px 45px; 
+    }
+    body { 
+      font-family: 'Segoe UI', Calibri, Arial, sans-serif; 
+      margin: 0; 
+      padding: 0; 
+      color: black; 
+      background: white;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
     
     /* Content body - preserve Word formatting */
-    .content-body { font-size: 11pt; line-height: 1.6; color: black; padding-top: 5px; }
+    .content-body { 
+      font-size: 11pt; 
+      line-height: 1.6; 
+      color: black; 
+      padding-top: 5px;
+      width: 100%;
+    }
     .content-body h1 { font-size: 14pt; margin: 15px 0 10px 0; font-weight: bold; }
     .content-body h2 { font-size: 13pt; margin: 12px 0 8px 0; font-weight: bold; }
     .content-body h3 { font-size: 12pt; margin: 10px 0 6px 0; font-weight: bold; }
@@ -206,64 +229,70 @@ export class PDFService {
       <style>
         .header-container {
           margin: 0 45px;
-          font-family: 'Segoe UI', Arial, sans-serif;
+          font-family: 'Segoe UI', Calibri, Arial, sans-serif;
           width: calc(100% - 90px);
         }
         .header-table {
           width: 100%;
           border-collapse: collapse;
-          border: 1.5pt solid #000;
+          border: 1.2pt solid #000;
         }
         .header-table td {
           border: 1pt solid #000;
-          padding: 4px 6px;
+          padding: 4px 5px;
           vertical-align: middle;
-          font-size: 7.5pt;
-          line-height: 1.3;
+          font-size: 7.2pt;
+          line-height: 1.2;
           overflow: hidden;
-          text-overflow: ellipsis;
         }
         .company-name {
           text-align: center;
           font-weight: bold;
           font-size: 10pt;
           text-transform: uppercase;
-          padding: 6px 6px !important;
-          border-bottom: 1.5pt solid #000 !important;
-          letter-spacing: 0.5px;
-          white-space: normal;
+          padding: 7px 5px !important;
+          border-bottom: 1.2pt solid #000 !important;
+          letter-spacing: 0.2px;
         }
         .label { font-weight: bold; color: #000; }
         .value { font-weight: normal; color: #000; }
-        .row-meta td { border-top: 1pt solid #000; }
-        .row-dept td { border-top: 1.5pt solid #000; }
+        .nested-table { width: 100%; border: none !important; border-collapse: collapse; margin: 0; padding: 0; }
+        .nested-table td { border: none !important; padding: 0 !important; font-size: 7.2pt !important; line-height: 1.4 !important; }
       </style>
       <div class="header-container">
         <table class="header-table">
           <colgroup>
-            <col style="width: 15%;">
+            <col style="width: 18%;">
             <col style="width: 20%;">
             <col style="width: 12%;">
-            <col style="width: 30%;">
-            <col style="width: 13%;">
+            <col style="width: 35%;">
+            <col style="width: 15%;">
           </colgroup>
           <tr>
             <td colspan="5" class="company-name">NEELIKON FOOD DYES AND CHEMICALS LIMITED</td>
           </tr>
-          <tr class="row-meta">
-            <td><span class="label">Location:</span> <span class="value">${location}</span></td>
+          <tr>
+            <td style="white-space: normal;"><span class="label">Location:</span> <span class="value">${location}</span></td>
             <td><span class="label">Date of Issue:</span> <span class="value">${dateOfIssue}</span></td>
             <td><span class="label">Rev. No.:</span> <span class="value">${revNo}</span></td>
-            <td style="white-space: normal; line-height: 1.5;">
-              <span class="label">Date of Rev.</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="label">:</span> <span class="value">${dateOfRev}</span><br>
-              <span class="label">Due Date of Rev.:</span> <span class="value">${dueDate}</span>
+            <td style="white-space: normal; padding: 2px 5px;">
+              <table class="nested-table">
+                <tr>
+                  <td style="width: 58%;"><span class="label">Date of Rev.</span></td>
+                  <td><span class="label">:</span> <span class="value">${dateOfRev}</span></td>
+                </tr>
+                <tr>
+                  <td><span class="label">Due Date of Rev.</span></td>
+                  <td><span class="label">:</span> <span class="value">${dueDate}</span></td>
+                </tr>
+              </table>
             </td>
             <td><span class="label">Page</span> <span class="pageNumber"></span> <span class="label">of</span> <span class="totalPages"></span></td>
           </tr>
-          <tr class="row-dept">
-            <td><span class="label">Dept.:</span> <span class="value">${deptName}</span></td>
-            <td colspan="2" style="white-space: normal;"><span class="label">Title:</span> <span class="value">${document.docName}</span></td>
-            <td colspan="2"><span class="label">Doc. No.:</span> <span class="value">${document.docNumber}</span></td>
+          <tr>
+            <td style="white-space: normal;"><span class="label">Dept.:</span> <span class="value">${deptName}</span></td>
+            <td colspan="3" style="white-space: normal;"><span class="label">Title:</span> <span class="value">${document.docName}</span></td>
+            <td style="white-space: normal;"><span class="label">Doc. No.:</span> <span class="value">${document.docNumber}</span></td>
           </tr>
         </table>
       </div>
@@ -359,91 +388,92 @@ export class PDFService {
 
       const drawHeader = (p: any, pageNum: number, totalPgs: number) => {
         const companyHeader = "NEELIKON FOOD DYES AND CHEMICALS LIMITED";
-        const L = 40;        // left margin
-        const R = width - 40; // right edge
-        const W = R - L;     // usable width
+        const L = 40;
+        const R = width - 40;
+        const W = R - L;
 
-        // Column X positions (5 columns: 15%, 20%, 12%, 30%, 13%)
+        // Vertical Line positions based on col widths: 18, 20, 12, 35, 15
         const col0 = L;
-        const col1 = L + W * 0.15;
-        const col2 = L + W * 0.35;
-        const col3 = L + W * 0.47;
-        const col4 = L + W * 0.77;
+        const col1 = L + W * 0.18;
+        const col2 = L + W * 0.38;
+        const col3 = L + W * 0.50;
+        const col4 = L + W * 0.85;
 
-        // Row Y positions (from top)
-        const row0Top = height - 20;   // Company name row top
-        const row0Bot = height - 40;   // Company name row bottom
-        const row1Top = row0Bot;        // Meta row top
-        const row1Bot = height - 75;   // Meta row bottom
-        const row2Top = row1Bot;        // Dept row top
-        const row2Bot = height - 95;  // Dept row bottom
+        const row0Top = height - 20;
+        const row0Bot = height - 40;
+        const row1Top = row0Bot;
+        const row1Bot = height - 75;
+        const row2Top = row1Bot;
+        const row2Bot = height - 95;
 
         const borderColor = rgb(0, 0, 0);
-        const lineColor = rgb(0, 0, 0);
         const bw = 1;
 
         // Outer box
-        p.drawRectangle({ x: L, y: row2Bot, width: W, height: row0Top - row2Bot, borderColor, borderWidth: 1.5 });
+        p.drawRectangle({ x: L, y: row2Bot, width: W, height: row0Top - row2Bot, borderColor, borderWidth: 1.2 });
 
-        // Row separators
-        p.drawLine({ start: { x: L, y: row0Bot }, end: { x: R, y: row0Bot }, thickness: 1.5, color: borderColor });
-        p.drawLine({ start: { x: L, y: row1Bot }, end: { x: R, y: row1Bot }, thickness: 1.5, color: borderColor });
+        // Row lines
+        p.drawLine({ start: { x: L, y: row0Bot }, end: { x: R, y: row0Bot }, thickness: 1.2, color: borderColor });
+        p.drawLine({ start: { x: L, y: row1Bot }, end: { x: R, y: row1Bot }, thickness: 1.2, color: borderColor });
 
-        // Column separators for row 1 (meta row)
+        // Row 1 vertical lines (5 cells)
         [col1, col2, col3, col4].forEach(cx => {
-          p.drawLine({ start: { x: cx, y: row1Top }, end: { x: cx, y: row1Bot }, thickness: bw, color: lineColor });
+          p.drawLine({ start: { x: cx, y: row1Top }, end: { x: cx, y: row1Bot }, thickness: bw, color: borderColor });
         });
 
-        // Column separators for row 2 (dept row) — 3 cells: dept(15%) | title(32%) | doc no(53%)
-        const deptCol1 = L + W * 0.15;
-        const deptCol2 = L + W * 0.47;
-        [deptCol1, deptCol2].forEach(cx => {
-          p.drawLine({ start: { x: cx, y: row2Top }, end: { x: cx, y: row2Bot }, thickness: bw, color: lineColor });
+        // Row 2 vertical lines (3 cells aligned to row 1)
+        [col1, col4].forEach(cx => {
+          p.drawLine({ start: { x: cx, y: row2Top }, end: { x: cx, y: row2Bot }, thickness: bw, color: borderColor });
         });
 
-        // Company name centered
+        // Company header
         const compW = boldFont.widthOfTextAtSize(companyHeader, 10);
-        p.drawText(companyHeader, { x: L + (W - compW) / 2, y: row0Bot + 7, size: 10, font: boldFont, color: rgb(0, 0, 0) });
+        p.drawText(companyHeader, { x: L + (W - compW) / 2, y: row0Bot + 7, size: 10, font: boldFont });
 
-        // Row 1 fields
+        const fs1 = 7.2;
         const location = (document as any).location || '';
         const dateOfIssue = this.formatDate(document.originalDateOfIssue || document.dateOfIssue);
         const revNo = document.revisionNo !== undefined ? String(document.revisionNo).padStart(2, '0') : '00';
         const dateOfRev = this.formatDate(document.dateOfRev || (document.revisionNo !== undefined && document.revisionNo > 0 ? document.dateOfIssue : null));
         const dueDate = this.formatDate(document.reviewDueDate);
 
-        const metaY = row1Bot + 14;
+        // Row 1 content
+        const metaY = row1Bot + 15;
         const metaY2 = row1Bot + 5;
-        const fs1 = 7.5;
 
-        p.drawText('Location:', { x: col0 + 4, y: metaY, size: fs1, font: boldFont });
-        p.drawText(` ${location}`, { x: col0 + 4 + boldFont.widthOfTextAtSize('Location:', fs1), y: metaY, size: fs1, font });
+        p.drawText('Location:', { x: col0 + 4, y: metaY, font: boldFont, size: fs1 });
+        p.drawText(` ${location}`, { x: col0 + 4 + boldFont.widthOfTextAtSize('Location:', fs1), y: metaY, font, size: fs1 });
 
-        p.drawText('Date of Issue:', { x: col1 + 4, y: metaY, size: fs1, font: boldFont });
-        p.drawText(` ${dateOfIssue}`, { x: col1 + 4 + boldFont.widthOfTextAtSize('Date of Issue:', fs1), y: metaY, size: fs1, font });
+        p.drawText('Date of Issue:', { x: col1 + 4, y: metaY, font: boldFont, size: fs1 });
+        p.drawText(` ${dateOfIssue}`, { x: col1 + 4 + boldFont.widthOfTextAtSize('Date of Issue:', fs1), y: metaY, font, size: fs1 });
 
-        p.drawText('Rev. No.:', { x: col2 + 4, y: metaY, size: fs1, font: boldFont });
-        p.drawText(` ${revNo}`, { x: col2 + 4 + boldFont.widthOfTextAtSize('Rev. No.:', fs1), y: metaY, size: fs1, font });
+        p.drawText('Rev. No.:', { x: col2 + 4, y: metaY, font: boldFont, size: fs1 });
+        p.drawText(` ${revNo}`, { x: col2 + 4 + boldFont.widthOfTextAtSize('Rev. No.:', fs1), y: metaY, font, size: fs1 });
 
-        p.drawText('Date of Rev.       :', { x: col3 + 4, y: metaY, size: fs1, font: boldFont });
-        p.drawText(` ${dateOfRev}`, { x: col3 + 4 + boldFont.widthOfTextAtSize('Date of Rev.       :', fs1), y: metaY, size: fs1, font });
-        p.drawText('Due Date of Rev.:', { x: col3 + 4, y: metaY2, size: fs1, font: boldFont });
-        p.drawText(` ${dueDate}`, { x: col3 + 4 + boldFont.widthOfTextAtSize('Due Date of Rev.:', fs1), y: metaY2, size: fs1, font });
+        // Rev cell
+        const col3W = col4 - col3;
+        p.drawText('Date of Rev.', { x: col3 + 4, y: metaY, font: boldFont, size: fs1 });
+        p.drawText(':', { x: col3 + col3W * 0.58, y: metaY, font: boldFont, size: fs1 });
+        p.drawText(` ${dateOfRev}`, { x: col3 + col3W * 0.58 + boldFont.widthOfTextAtSize(':', fs1), y: metaY, font, size: fs1 });
 
-        p.drawText(`Page ${pageNum}  of  ${totalPgs}`, { x: col4 + 4, y: metaY, size: fs1, font: boldFont });
+        p.drawText('Due Date of Rev.', { x: col3 + 4, y: metaY2, font: boldFont, size: fs1 });
+        p.drawText(':', { x: col3 + col3W * 0.58, y: metaY2, font: boldFont, size: fs1 });
+        p.drawText(` ${dueDate}`, { x: col3 + col3W * 0.58 + boldFont.widthOfTextAtSize(':', fs1), y: metaY2, font, size: fs1 });
 
-        // Row 2 fields — Dept | Title | Doc. No.
+        p.drawText(`Page ${pageNum} of ${totalPgs}`, { x: col4 + 4, y: metaY, font: boldFont, size: fs1 });
+
+        // Row 2 content
         const deptName = (document as any).departmentNames?.[0] || 'Management Representative';
-        const deptY = row2Bot + 5;
+        const deptY = row2Bot + 6;
 
-        p.drawText('Dept.:', { x: col0 + 4, y: deptY, size: fs1, font: boldFont });
-        p.drawText(` ${deptName.substring(0, 20)}`, { x: col0 + 4 + boldFont.widthOfTextAtSize('Dept.:', fs1), y: deptY, size: fs1, font });
+        p.drawText('Dept.:', { x: col0 + 4, y: deptY, font: boldFont, size: fs1 });
+        p.drawText(` ${deptName.substring(0, 20)}`, { x: col0 + 4 + boldFont.widthOfTextAtSize('Dept.:', fs1), y: deptY, font, size: fs1 });
 
-        p.drawText('Title:', { x: deptCol1 + 4, y: deptY, size: fs1, font: boldFont });
-        p.drawText(` ${document.docName.substring(0, 45)}`, { x: deptCol1 + 4 + boldFont.widthOfTextAtSize('Title:', fs1), y: deptY, size: fs1, font });
+        p.drawText('Title:', { x: col1 + 4, y: deptY, font: boldFont, size: fs1 });
+        p.drawText(` ${document.docName.substring(0, 50)}`, { x: col1 + 4 + boldFont.widthOfTextAtSize('Title:', fs1), y: deptY, font, size: fs1 });
 
-        p.drawText('Doc. No.:', { x: deptCol2 + 4, y: deptY, size: fs1, font: boldFont });
-        p.drawText(` ${document.docNumber}`, { x: deptCol2 + 4 + boldFont.widthOfTextAtSize('Doc. No.:', fs1), y: deptY, size: fs1, font });
+        p.drawText('Doc. No.:', { x: col4 + 4, y: deptY, font: boldFont, size: fs1 });
+        p.drawText(` ${document.docNumber}`, { x: col4 + 4 + boldFont.widthOfTextAtSize('Doc. No.:', fs1), y: deptY, font, size: fs1 });
       };
       drawHeader(page, 1, 1);
       let y = height - 170;

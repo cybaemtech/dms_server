@@ -90,15 +90,15 @@ export default function RecipientDashboard({ onLogout, userId = "recipient-1", r
       notificationCount={unreadNotifications}
       onLogout={onLogout}
     >
-      <div className="space-y-6">
+      <div className="space-y-4">
         <div>
-          <h2 className="text-3xl font-semibold text-foreground">Document Library</h2>
-          <p className="text-sm text-muted-foreground mt-1">
+          <h2 className="text-lg font-bold text-foreground">Document Library</h2>
+          <p className="text-xs text-muted-foreground">
             View and print issued documents in PDF format
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <StatCard
             title="Total Documents"
             value={issuedDocuments.length}
@@ -119,10 +119,10 @@ export default function RecipientDashboard({ onLogout, userId = "recipient-1", r
           />
         </div>
 
-        <Card className="p-6">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-lg font-semibold">Issued Documents</h3>
-            <div className="text-sm text-muted-foreground">
+        <Card className="p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-base font-semibold">Issued Documents</h3>
+            <div className="text-[11px] text-muted-foreground italic">
               Click "View" to open PDF with control copy watermark
             </div>
           </div>
@@ -145,9 +145,9 @@ export default function RecipientDashboard({ onLogout, userId = "recipient-1", r
           )}
         </Card>
 
-        <Card className="p-6 bg-blue-50/30 dark:bg-blue-950/20 border-blue-200 dark:border-blue-900">
-          <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
-            <FileText className="w-5 h-5 text-blue-600" />
+        <Card className="p-4 bg-blue-50/30 dark:bg-blue-950/20 border-blue-200 dark:border-blue-900 shadow-sm">
+          <h3 className="text-base font-semibold mb-2.5 flex items-center gap-2">
+            <FileText className="w-4 h-4 text-blue-600" />
             Document Access Information
           </h3>
           <div className="space-y-2 text-sm text-muted-foreground">

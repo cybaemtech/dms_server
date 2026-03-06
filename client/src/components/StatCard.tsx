@@ -28,15 +28,15 @@ export default function StatCard({ title, value, icon: Icon, trend, className, v
   };
 
   return (
-    <Card className={`p-4 ${className} border-2 ${variantStyles[variant]}`} data-testid={`card-stat-${title.toLowerCase().replace(/\s+/g, '-')}`}>
+    <Card className={`p-2.5 ${className} border-2 ${variantStyles[variant]}`} data-testid={`card-stat-${title.toLowerCase().replace(/\s+/g, '-')}`}>
       <div className="flex items-start justify-between">
-        <div className="space-y-1">
-          <p className="text-xs font-semibold uppercase tracking-wider opacity-80">{title}</p>
-          <p className="text-2xl font-bold" data-testid={`text-value-${title.toLowerCase().replace(/\s+/g, '-')}`}>{value}</p>
-          {trend && <p className="text-[10px] opacity-70">{trend}</p>}
+        <div className="space-y-0.5">
+          <p className="text-[10px] font-semibold uppercase tracking-wider opacity-80">{title}</p>
+          <p className="text-xl font-bold leading-tight" data-testid={`text-value-${title.toLowerCase().replace(/\s+/g, '-')}`}>{value}</p>
+          {trend && <p className="text-[9px] opacity-70 leading-none">{trend}</p>}
         </div>
-        <div className={`p-2 rounded-lg ${iconStyles[variant]} text-white`}>
-          <Icon className="w-4 h-4" />
+        <div className={`p-1.5 rounded-md ${iconStyles[variant]} text-white`}>
+          <Icon className="w-3.5 h-3.5" />
         </div>
       </div>
     </Card>

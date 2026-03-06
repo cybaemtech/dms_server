@@ -43,7 +43,7 @@ export interface Department {
 
 export interface InsertDepartment {
   name: string;
-  code: string;
+  code?: string | null;
   category?: string | null;
   categoryName?: string | null;
 }

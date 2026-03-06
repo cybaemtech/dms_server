@@ -30,6 +30,7 @@ export interface IStorage {
   getDocumentsByDepartment(departmentId: string, status?: string): Promise<Document[]>;
   createDocument(document: InsertDocument): Promise<Document>;
   updateDocument(id: string, updates: Partial<Document>): Promise<Document | undefined>;
+  getGlobalNextRevisionNo(): Promise<number>;
 
   getDepartments(): Promise<Department[]>;
   createDepartment(department: InsertDepartment): Promise<Department>;
@@ -241,14 +242,14 @@ export class SqlServerStorage implements IStorage {
     }
 
     const userId = `${prefix}-${nextNumber.toString().padStart(3, '0')}`;
-    
+
     // Handle department fields syncing
     let deptId = (insertUser as any).departmentId;
     if (deptId === "") deptId = null;
-    
+
     let deptName = (insertUser as any).departmentName || null;
     let deptCode = (insertUser as any).departmentCode || null;
-    
+
     if (deptId && (!deptName || !deptCode)) {
       const deptResult = await pool.request()
         .input('id', sql.NVarChar, deptId)
@@ -289,15 +290,15 @@ export class SqlServerStorage implements IStorage {
     if (updates.role !== undefined) { setClauses.push('role = @role'); request.input('role', sql.NVarChar, updates.role); }
     if (updates.fullName !== undefined) { setClauses.push('full_name = @fullName'); request.input('fullName', sql.NVarChar, updates.fullName); }
     if (updates.masterCopyAccess !== undefined) { setClauses.push('master_copy_access = @masterCopyAccess'); request.input('masterCopyAccess', sql.Bit, updates.masterCopyAccess ? 1 : 0); }
-    
+
     // Handle department updates with empty-string-to-null conversion
     let deptId = updates.departmentId;
     if (deptId === "") deptId = null;
-    
-    if (updates.departmentId !== undefined) { 
-      setClauses.push('department_id = @departmentId'); 
-      request.input('departmentId', sql.NVarChar, deptId); 
-      
+
+    if (updates.departmentId !== undefined) {
+      setClauses.push('department_id = @departmentId');
+      request.input('departmentId', sql.NVarChar, deptId);
+
       // If departmentId is changed, try to update name and code too
       if (deptId) {
         const deptResult = await pool.request()
@@ -382,21 +383,43 @@ export class SqlServerStorage implements IStorage {
     return result.recordset.map(mapDocument);
   }
 
+  async getGlobalNextRevisionNo(): Promise<number> {
+    const pool = await getPool();
+    const result = await pool.request()
+      .query('SELECT ISNULL(MAX(revision_no), -1) + 1 as nextRev FROM documents');
+    
+    return result.recordset[0]?.nextRev ?? 0;
+  }
+
   async getDocumentsByDepartment(departmentId: string, status?: string): Promise<Document[]> {
     const pool = await getPool();
     const request = pool.request().input('departmentId', sql.NVarChar, departmentId);
-    
+
+    // Primary: docs explicitly assigned to this department via document_departments
+    // Fallback: docs where creator's department matches AND no document_departments entries exist
     let query = `SELECT DISTINCT d.* FROM documents d
-                 INNER JOIN document_departments dd ON d.id = dd.document_id
-                 WHERE dd.department_id = @departmentId`;
-                 
+                 WHERE (
+                   EXISTS (
+                     SELECT 1 FROM document_departments dd
+                     WHERE dd.document_id = d.id AND dd.department_id = @departmentId
+                   )
+                   OR (
+                     NOT EXISTS (
+                       SELECT 1 FROM document_departments dd2 WHERE dd2.document_id = d.id
+                     )
+                     AND d.prepared_by IN (
+                       SELECT id FROM users WHERE department_id = @departmentId
+                     )
+                   )
+                 )`;
+
     if (status) {
       query += ` AND d.status = @status`;
       request.input('status', sql.NVarChar, status);
     }
-    
+
     query += ` ORDER BY d.created_at DESC`;
-    
+
     const result = await request.query(query);
     return result.recordset.map(mapDocument);
   }
@@ -510,7 +533,7 @@ export class SqlServerStorage implements IStorage {
     await pool.request()
       .input('id', sql.NVarChar, deptId)
       .input('name', sql.NVarChar, insertDepartment.name)
-      .input('code', sql.NVarChar, insertDepartment.code)
+      .input('code', sql.NVarChar, insertDepartment.code || '')
       .input('category', sql.NVarChar, insertDepartment.category || null)
       .input('categoryName', sql.NVarChar, insertDepartment.categoryName || null)
       .query('INSERT INTO departments (id, name, code, category, category_name) VALUES (@id, @name, @code, @category, @categoryName)');
