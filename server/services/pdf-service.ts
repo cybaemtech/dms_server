@@ -46,6 +46,10 @@ export class PDFService {
     }
   }
 
+  private sanitizeFilename(name: string): string {
+    return name.replace(/[/\\?%*:|"<>]/g, '-').replace(/\s+/g, '_');
+  }
+
   private async convertWordToPDFWithPuppeteer(
     wordFilePath: string,
     document: Document,
@@ -72,8 +76,8 @@ export class PDFService {
           "u => span.underline"
         ],
         includeDefaultStyleMap: true,
-        convertImage: mammoth.images.imgElement(function(image: any) {
-          return image.read("base64").then(function(imageBuffer: string) {
+        convertImage: mammoth.images.imgElement(function (image: any) {
+          return image.read("base64").then(function (imageBuffer: string) {
             return { src: "data:" + image.contentType + ";base64," + imageBuffer };
           });
         })
@@ -105,7 +109,8 @@ export class PDFService {
         return 0; // Placeholder, will update document after PDF generation
       });
 
-      const pdfFileName = `${document.docNumber}_v${document.revisionNo}_final_${Date.now()}.pdf`;
+      const safeDocNumber = this.sanitizeFilename(document.docNumber);
+      const pdfFileName = `${safeDocNumber}_v${document.revisionNo}_final_${Date.now()}.pdf`;
       const pdfPath = path.join(this.pdfsDir, pdfFileName);
 
       const headerHtml = this.getHeaderTemplate(document);
@@ -506,7 +511,8 @@ export class PDFService {
         page.drawText(cleanLine, { x: 50, y, size: 10, font });
         y -= 15;
       }
-      const pdfFileName = `${document.docNumber}_v${document.revisionNo}_fallback_${Date.now()}.pdf`;
+      const safeDocNumber = this.sanitizeFilename(document.docNumber);
+      const pdfFileName = `${safeDocNumber}_v${document.revisionNo}_fallback_${Date.now()}.pdf`;
       const pdfPath = path.join(this.pdfsDir, pdfFileName);
       const pdfBytes = await pdfDoc.save();
       await fs.writeFile(pdfPath, pdfBytes);
