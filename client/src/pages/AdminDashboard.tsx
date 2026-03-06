@@ -683,6 +683,14 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
     setViewDialogOpen(true);
   };
 
+  const handleDownload = (doc: Document) => {
+    window.open(`/api/documents/${doc.id}/download`, "_blank");
+    toast({
+      title: "Download Started",
+      description: `Downloading ${doc.docName} as Word document...`,
+    });
+  };
+
   const handleExportLogs = () => {
     toast({
       title: "Export Started",
@@ -1030,12 +1038,11 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
                           </div>
                           <Badge
                             variant="secondary"
-                            className={`text-[9px] px-1 py-0 h-4 font-bold ${
-                              doc.status === 'issued' ? 'bg-green-500/10 text-green-600' :
+                            className={`text-[9px] px-1 py-0 h-4 font-bold ${doc.status === 'issued' ? 'bg-green-500/10 text-green-600' :
                                 doc.status === 'approved' ? 'bg-blue-500/10 text-blue-600' :
                                   doc.status === 'pending' ? 'bg-amber-500/10 text-amber-600' :
                                     'bg-red-500/10 text-red-600'
-                            }`}
+                              }`}
                           >
                             {doc.status.charAt(0).toUpperCase() + doc.status.slice(1)}
                           </Badge>
@@ -1161,13 +1168,12 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
                                   <td className="px-2 py-1 border-r border-slate-200">
                                     <Badge
                                       variant="outline"
-                                      className={`text-[9px] px-1 py-0 h-4 ${
-                                        doc.status.toLowerCase() === 'pending' ? 'bg-amber-500/10 text-amber-600 border-amber-200' :
+                                      className={`text-[9px] px-1 py-0 h-4 ${doc.status.toLowerCase() === 'pending' ? 'bg-amber-500/10 text-amber-600 border-amber-200' :
                                           doc.status.toLowerCase() === 'approved' ? 'bg-blue-500/10 text-blue-600 border-blue-200' :
                                             doc.status.toLowerCase() === 'issued' ? 'bg-green-500/10 text-green-600 border-green-200' :
                                               doc.status.toLowerCase() === 'declined' ? 'bg-red-500/10 text-red-600 border-red-200' :
                                                 'bg-gray-500/10 text-gray-600 border-gray-200'
-                                      }`}
+                                        }`}
                                     >
                                       {doc.status.toUpperCase()}
                                     </Badge>
@@ -1727,7 +1733,7 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
         document={selectedDoc}
         open={viewDialogOpen}
         onClose={() => setViewDialogOpen(false)}
-        onDownload={() => { }}
+        onDownload={handleDownload}
       />
 
       {/* Add User Dialog */}

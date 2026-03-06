@@ -50,6 +50,7 @@ export default function CreateDocumentPage({
 
         <DocumentUploadForm
           onSubmit={onSubmit}
+          onCancel={onBack}
           defaultPreparerName={userFullName}
           defaultLocation={userLocation}
           initialData={initialData}

@@ -480,7 +480,7 @@ export default function ApproverDashboard({
         document={viewDoc}
         open={viewDialogOpen}
         onClose={() => setViewDialogOpen(false)}
-        onDownload={viewDoc ? () => handleViewWord(viewDoc) : () => { }}
+        onDownload={handleDownload}
       />
 
       <WordDocumentViewer

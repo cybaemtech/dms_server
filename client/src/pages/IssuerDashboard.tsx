@@ -439,7 +439,7 @@ export default function IssuerDashboard({ onLogout, userId = "issuer-1", issuerN
         document={viewDoc}
         open={viewDialogOpen}
         onClose={() => setViewDialogOpen(false)}
-        onDownload={viewDoc ? () => handleViewWord(viewDoc as any) : () => { }}
+        onDownload={handleDownload}
       />
 
       <PDFViewer

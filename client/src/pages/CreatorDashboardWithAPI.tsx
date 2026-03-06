@@ -244,16 +244,11 @@ export default function CreatorDashboardWithAPI({
   };
 
   const handleDownload = (doc: Document) => {
-    if (doc.status === "Issued") {
-      // Use the specific PDF endpoint for issued documents to get the header/footer
-      window.open(`/api/documents/${doc.id}/pdf?userId=${userId}`, "_blank");
-    } else {
-      // For other statuses, just download the Word file if available
-      window.open(`/api/documents/${doc.id}/download`, "_blank");
-    }
+    // For all statuses, download the Word file
+    window.open(`/api/documents/${doc.id}/download`, "_blank");
     toast({
       title: "Download Started",
-      description: `Downloading ${doc.docName}...`,
+      description: `Downloading ${doc.docName} as Word document...`,
     });
   };
 

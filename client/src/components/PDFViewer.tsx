@@ -252,24 +252,6 @@ export default function PDFViewer({ documentId, userId, open, onClose, documentN
 
           <div className="flex gap-2">
             <Button
-              variant="outline"
-              onClick={() => printMutation.mutate()}
-              disabled={printMutation.isPending || isLoading}
-              data-testid="button-download-pdf"
-            >
-              {printMutation.isPending ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Processing...
-                </>
-              ) : (
-                <>
-                  <Download className="w-4 h-4 mr-2" />
-                  Download PDF
-                </>
-              )}
-            </Button>
-            <Button
               variant="default"
               onClick={() => printMutation.mutate()}
               disabled={printMutation.isPending || isLoading}

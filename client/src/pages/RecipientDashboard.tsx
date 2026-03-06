@@ -5,7 +5,8 @@ import StatCard from "@/components/StatCard";
 import DocumentTable, { Document } from "@/components/DocumentTable";
 import PDFViewer from "@/components/PDFViewer";
 import { Card } from "@/components/ui/card";
-import { FileText, Eye, Printer } from "lucide-react";
+import { FileText, Eye, Printer, Download } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 interface RecipientDashboardProps {
   onLogout?: () => void;
@@ -36,6 +37,7 @@ export default function RecipientDashboard({ onLogout, userId = "recipient-1", r
   const [pdfViewerOpen, setPdfViewerOpen] = useState(false);
   const [pdfDocId, setPdfDocId] = useState<string>("");
   const [pdfDocName, setPdfDocName] = useState<string>("");
+  const { toast } = useToast();
 
   const { data: issuedDocuments = [], isLoading } = useQuery<ApiDocument[]>({
     queryKey: ["/api/documents", "issued", userId],
@@ -61,6 +63,14 @@ export default function RecipientDashboard({ onLogout, userId = "recipient-1", r
     setPdfDocId(doc.id);
     setPdfDocName(doc.docName);
     setPdfViewerOpen(true);
+  };
+
+  const handleDownload = (doc: Document) => {
+    window.open(`/api/documents/${doc.id}/download`, "_blank");
+    toast({
+      title: "Download Started",
+      description: `Downloading ${doc.docName} as Word document...`,
+    });
   };
 
   const transformedDocs = (docs: ApiDocument[]): Document[] => {
@@ -135,6 +145,7 @@ export default function RecipientDashboard({ onLogout, userId = "recipient-1", r
             <DocumentTable
               documents={transformedDocs(issuedDocuments)}
               onView={handleViewPDF}
+              onDownload={handleDownload}
               showActions={true}
             />
           ) : (
@@ -152,7 +163,7 @@ export default function RecipientDashboard({ onLogout, userId = "recipient-1", r
           </h3>
           <div className="space-y-2 text-sm text-muted-foreground">
             <p>
-              <strong className="text-foreground">View Only:</strong> Documents are available in PDF format and cannot be downloaded. This ensures document integrity and version control.
+              <strong className="text-foreground">View & Download:</strong> Documents are available for viewing in PDF format and downloading as Word documents. This ensures accessibility while maintaining document integrity through the system.
             </p>
             <p>
               <strong className="text-foreground">Print Tracking:</strong> When you print a document, a unique control copy number is assigned and logged for audit purposes.
