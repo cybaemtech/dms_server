@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Loader2, Printer, ZoomIn, ZoomOut, ChevronLeft, ChevronRight, Download } from "lucide-react";
+import { Loader2, Printer, ZoomIn, ZoomOut, ChevronLeft, ChevronRight, FileText } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -9,7 +9,7 @@ import * as pdfjsLib from 'pdfjs-dist';
 
 // Configure PDF.js worker to use local file
 // This avoids the CDN loading issues and works offline
-pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js';
+// Worker configuration is handled dynamically in useEffect
 
 interface PDFViewerProps {
   documentId: string;
@@ -25,11 +25,17 @@ export default function PDFViewer({ documentId, userId, open, onClose, documentN
   const [totalPages, setTotalPages] = useState(0);
   const [scale, setScale] = useState(1.2);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const renderTaskRef = useRef<any>(null);
   const { toast } = useToast();
 
   const printMutation = useMutation({
     mutationFn: async () => {
+      console.log(`[Print] Initiating print for doc: ${documentId}, user: ${userId}`);
+      if (!userId || userId.trim() === "") {
+        throw new Error("User session is invalid. Please log out and log in again to print.");
+      }
       const response = await apiRequest('POST', `/api/documents/${documentId}/print`, { userId });
       return response.blob();
     },
@@ -37,10 +43,16 @@ export default function PDFViewer({ documentId, userId, open, onClose, documentN
       const url = URL.createObjectURL(pdfBlob);
       const printWindow = window.open(url, '_blank');
       if (printWindow) {
-        printWindow.addEventListener('load', () => {
+        if (typeof printWindow.addEventListener === 'function') {
+          printWindow.addEventListener('load', () => {
+            printWindow.print();
+            URL.revokeObjectURL(url);
+          });
+        } else {
+          // Fallback for browsers with limited window object access
           printWindow.print();
           URL.revokeObjectURL(url);
-        });
+        }
       }
       toast({
         title: "Print Initiated",
@@ -61,15 +73,31 @@ export default function PDFViewer({ documentId, userId, open, onClose, documentN
 
     const loadPDF = async () => {
       setIsLoading(true);
+      setError(null);
       try {
         console.log(`Loading PDF for document ${documentId} and user ${userId}`);
+
+        if (pdfjsLib && pdfjsLib.GlobalWorkerOptions) {
+          // Use absolute path for worker to ensure it loads correctly
+          pdfjsLib.GlobalWorkerOptions.workerSrc = `${window.location.origin}/pdf.worker.min.js`;
+          console.log('PDF Worker source set to:', pdfjsLib.GlobalWorkerOptions.workerSrc);
+        }
 
         const response = await fetch(`/api/documents/${documentId}/pdf?userId=${userId}`);
 
         if (!response.ok) {
           const errorText = await response.text();
-          console.error('PDF fetch error:', response.status, errorText);
-          throw new Error(`Failed to load PDF: ${response.status} - ${errorText}`);
+          let errorMessage = errorText;
+          try {
+            const errorJson = JSON.parse(errorText);
+            if (errorJson.message) {
+              errorMessage = errorJson.message;
+            }
+          } catch (e) {
+            // Not a JSON error, use raw text
+          }
+          console.error('PDF fetch error:', response.status, errorMessage);
+          throw new Error(errorMessage || `Failed to load PDF (Status ${response.status})`);
         }
 
         const contentType = response.headers.get('content-type');
@@ -86,12 +114,9 @@ export default function PDFViewer({ documentId, userId, open, onClose, documentN
 
         console.log('PDF data loaded, size:', arrayBuffer.byteLength);
 
-        // Enhanced PDF.js loading with better error handling
+        // Simplified PDF.js loading
         const loadingTask = pdfjsLib.getDocument({
           data: arrayBuffer,
-          // Disable worker if it fails to load
-          useWorkerFetch: false,
-          isEvalSupported: false,
           useSystemFonts: true
         });
 
@@ -120,8 +145,7 @@ export default function PDFViewer({ documentId, userId, open, onClose, documentN
             const arrayBuffer = await response.arrayBuffer();
             const loadingTask = pdfjsLib.getDocument({
               data: arrayBuffer,
-              disableWorker: true
-            });
+            } as any);
             const pdf = await loadingTask.promise;
             setPdfDoc(pdf);
             setTotalPages(pdf.numPages);
@@ -133,6 +157,7 @@ export default function PDFViewer({ documentId, userId, open, onClose, documentN
           }
         }
 
+        setError(error.message || "Failed to load PDF document.");
         toast({
           variant: "destructive",
           title: "PDF Load Failed",
@@ -149,34 +174,138 @@ export default function PDFViewer({ documentId, userId, open, onClose, documentN
   useEffect(() => {
     if (!pdfDoc || !canvasRef.current) return;
 
+    let isCancelled = false;
+
     const renderPage = async () => {
-      const page = await pdfDoc.getPage(currentPage);
-      const viewport = page.getViewport({ scale });
+      // Cancel any ongoing render task
+      if (renderTaskRef.current) {
+        try {
+          renderTaskRef.current.cancel();
+        } catch (e) {
+          // Ignore cancellation errors
+        }
+      }
 
-      const canvas = canvasRef.current!;
-      const context = canvas.getContext('2d')!;
-      canvas.height = viewport.height;
-      canvas.width = viewport.width;
+      try {
+        const page = await pdfDoc.getPage(currentPage);
 
-      const renderContext = {
-        canvasContext: context,
-        viewport: viewport,
-      };
+        // Use a default scale if it's missing or invalid
+        const currentScale = scale || 1.2;
+        const viewport = page.getViewport({ scale: currentScale });
 
-      await page.render(renderContext).promise;
+        if (isCancelled) return;
+
+        const canvas = canvasRef.current!;
+        const context = canvas.getContext('2d')!;
+
+        // Clear canvas before new render
+        context.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Standard PDF.js rendering with high-DPI support
+        const dpr = window.devicePixelRatio || 1;
+        canvas.height = viewport.height * dpr;
+        canvas.width = viewport.width * dpr;
+
+        // CSS display size
+        canvas.style.height = `${viewport.height}px`;
+        canvas.style.width = `${viewport.width}px`;
+
+        // Scale context for DPR
+        context.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+        const renderContext = {
+          canvasContext: context,
+          viewport: viewport,
+        };
+
+        const renderTask = page.render(renderContext);
+        renderTaskRef.current = renderTask;
+
+        await renderTask.promise;
+        console.log(`Page ${currentPage} rendered successfully at scale ${currentScale}`);
+      } catch (error: any) {
+        if (error.name === 'RenderingCancelledException') {
+          console.log('Rendering cancelled for page', currentPage);
+        } else {
+          console.error('PDF render error:', error);
+          toast({
+            variant: "destructive",
+            title: "Render Error",
+            description: "Failed to render PDF page. Try zooming out.",
+          });
+        }
+      }
     };
 
     renderPage();
-  }, [pdfDoc, currentPage, scale]);
+
+    return () => {
+      isCancelled = true;
+      if (renderTaskRef.current) {
+        try {
+          renderTaskRef.current.cancel();
+        } catch (e) { }
+      }
+    };
+  }, [pdfDoc, currentPage, scale, toast]);
 
   const handleZoomIn = () => setScale(prev => Math.min(prev + 0.2, 3));
   const handleZoomOut = () => setScale(prev => Math.max(prev - 0.2, 0.5));
   const handlePrevPage = () => setCurrentPage(prev => Math.max(prev - 1, 1));
   const handleNextPage = () => setCurrentPage(prev => Math.min(prev + 1, totalPages));
 
+  const downloadMutation = useMutation({
+    mutationFn: async () => {
+      console.log(`[Download] Starting Request v2.1 for doc: ${documentId}`);
+      if (!userId || userId.trim() === "") {
+        throw new Error("User session is invalid.");
+      }
+      const response = await apiRequest('POST', `/api/documents/${documentId}/download-pdf`, { userId });
+
+      const blob = await response.blob();
+      console.log(`[Download] Blob received: size=${blob.size}, type=${blob.type}`);
+
+      if (blob.size < 100) {
+        throw new Error("Received an invalid or empty PDF file from the server.");
+      }
+
+      return blob;
+    },
+    onSuccess: (blob) => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+
+      // Strict sanitization and trim
+      const safeName = (documentName || 'document').trim().replace(/[/\\?%*:|"<>]/g, '-').replace(/\s+$/, '');
+      a.download = `${safeName}.pdf`;
+
+      console.log(`[Download] Triggering browser download for: ${a.download}`);
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+
+      // Delay revocation to ensure browser captures the download
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+      toast({
+        title: "Download Successful",
+        description: `File "${a.download}" saved to your computer.`,
+      });
+    },
+    onError: (error: any) => {
+      console.error("[Download] Error:", error);
+      toast({
+        variant: "destructive",
+        title: "Download Failed",
+        description: error.message || "Failed to download PDF. Please try again.",
+      });
+    }
+  });
+
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-5xl max-h-[95vh]" data-testid="dialog-pdf-viewer">
+      <DialogContent className="max-w-5xl max-h-[95vh] pr-12" data-testid="dialog-pdf-viewer">
         <DialogHeader>
           <DialogTitle className="flex items-center justify-between">
             <span>{documentName || "Document Viewer"}</span>
@@ -204,6 +333,9 @@ export default function PDFViewer({ documentId, userId, open, onClose, documentN
               </Button>
             </div>
           </DialogTitle>
+          <DialogDescription className="sr-only">
+            PDF document viewer for {documentName || "document"}.
+          </DialogDescription>
         </DialogHeader>
 
         <div className="flex-1 overflow-hidden">
@@ -212,30 +344,42 @@ export default function PDFViewer({ documentId, userId, open, onClose, documentN
               <Loader2 className="w-8 h-8 animate-spin text-primary" />
               <span className="ml-2 text-muted-foreground">Loading PDF...</span>
             </div>
+          ) : error ? (
+            <div className="flex flex-col items-center justify-center h-[60vh] text-center p-4">
+              <div className="bg-destructive/10 text-destructive rounded-full p-4 mb-4">
+                <FileText className="w-12 h-12" />
+              </div>
+              <h3 className="text-lg font-semibold mb-2">Failed to load PDF</h3>
+              <p className="text-muted-foreground mb-4 max-w-md">{error}</p>
+              <Button variant="outline" onClick={() => window.location.reload()}>
+                Refresh Page
+              </Button>
+            </div>
           ) : (
-            <div className="overflow-auto h-[60vh] bg-gray-100 dark:bg-gray-900 rounded-md p-4 flex justify-center">
-              <canvas
-                ref={canvasRef}
-                className="shadow-lg bg-white"
-                data-testid="canvas-pdf"
-              />
+            <div className="overflow-auto min-h-[60vh] max-h-[70vh] bg-slate-100 dark:bg-slate-900 rounded-md p-4 flex flex-col items-center">
+              <div className="relative inline-block border shadow-2xl bg-white">
+                <canvas
+                  ref={canvasRef}
+                  data-testid="canvas-pdf"
+                />
+              </div>
             </div>
           )}
         </div>
 
-        <DialogFooter className="flex items-center justify-between">
+        <DialogFooter className="flex items-center justify-between border-t p-4 bg-slate-50">
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
               size="sm"
               onClick={handlePrevPage}
               disabled={currentPage <= 1 || isLoading}
-              data-testid="button-prev-page"
+              className="h-8"
             >
-              <ChevronLeft className="w-4 h-4" />
+              <ChevronLeft className="w-4 h-4 mr-1" />
               Prev
             </Button>
-            <span className="text-sm text-muted-foreground min-w-[80px] text-center">
+            <span className="text-xs font-medium text-muted-foreground bg-white px-3 py-1 border rounded-md min-w-[100px] text-center">
               Page {currentPage} of {totalPages}
             </span>
             <Button
@@ -243,34 +387,54 @@ export default function PDFViewer({ documentId, userId, open, onClose, documentN
               size="sm"
               onClick={handleNextPage}
               disabled={currentPage >= totalPages || isLoading}
-              data-testid="button-next-page"
+              className="h-8"
             >
               Next
-              <ChevronRight className="w-4 h-4" />
+              <ChevronRight className="w-4 h-4 ml-1" />
             </Button>
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex gap-3">
+            <Button
+              variant="outline"
+              onClick={() => downloadMutation.mutate()}
+              disabled={downloadMutation.isPending || isLoading}
+              className="h-9 px-4"
+            >
+              {downloadMutation.isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Downloading...
+                </>
+              ) : (
+                <>
+                  <FileText className="w-4 h-4 mr-2" />
+                  Download PDF
+                </>
+              )}
+            </Button>
+
             <Button
               variant="default"
               onClick={() => printMutation.mutate()}
               disabled={printMutation.isPending || isLoading}
-              data-testid="button-print-pdf"
+              className="bg-primary hover:bg-primary/90 h-9 px-4"
             >
               {printMutation.isPending ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Generating...
+                  Processing...
                 </>
               ) : (
                 <>
                   <Printer className="w-4 h-4 mr-2" />
-                  Print
+                  Print Controlled Copy
                 </>
               )}
             </Button>
-            <Button variant="outline" onClick={onClose} data-testid="button-close-pdf">
-              Close
+
+            <Button variant="ghost" onClick={onClose} className="h-9 px-4">
+              Close Viewer
             </Button>
           </div>
         </DialogFooter>

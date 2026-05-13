@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useCallback, useMemo } from "react";
+import * as XLSX from "xlsx";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import { useForm } from "react-hook-form";
@@ -7,6 +8,8 @@ import { z } from "zod";
 import DashboardLayout from "@/components/DashboardLayout";
 import DocumentTable, { Document } from "@/components/DocumentTable";
 import DocumentViewDialog from "@/components/DocumentViewDialog";
+import PDFViewer from "@/components/PDFViewer";
+import { WordDocumentViewer } from "@/components/WordDocumentViewer";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -43,6 +46,16 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   FileText,
   Users,
   Building2,
@@ -67,7 +80,12 @@ import {
   Edit,
   ChevronDown,
   ChevronRight,
-  Eye
+  Eye,
+  Search,
+  Settings as SettingsIcon,
+  AlertTriangle,
+  AlertCircle,
+  Archive
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -89,6 +107,8 @@ import {
 interface AdminDashboardProps {
   onLogout?: () => void;
   userId?: string;
+  adminName?: string;
+  departmentName?: string | null;
 }
 
 interface ApiDocument {
@@ -111,6 +131,8 @@ interface ApiDocument {
   issueRemarks?: string;
   previousVersionId?: string;
   createdAt?: string;
+  location?: string;
+  dateOfRev?: string;
   departments?: Array<{ id: string; name: string }>;
 }
 
@@ -121,6 +143,7 @@ interface AdminStats {
     approved: number;
     issued: number;
     declined: number;
+    obsolete: number;
     recentCount: number;
   };
   users: {
@@ -167,6 +190,7 @@ interface AdminDocuments {
     approved: number;
     issued: number;
     declined: number;
+    obsolete: number;
   };
 }
 
@@ -187,7 +211,7 @@ const departmentFormSchema = z.object({
 });
 
 type UserFormValues = z.infer<typeof userFormSchema>;
-type DepartmentFormValues = z.infer<typeof departmentFormSchema>;
+type DepartmentFormValues = { name: string };
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -516,14 +540,23 @@ function UserCard({ user, role, index, onDelete, onEdit }: {
   );
 }
 
-export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDashboardProps) {
+export default function AdminDashboard({ onLogout, userId = "admin-1", adminName, departmentName }: AdminDashboardProps) {
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
   const [selectedDoc, setSelectedDoc] = useState<Document | null>(null);
   const [activeTab, setActiveTab] = useState("overview");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sortBy, setSortBy] = useState("newest");
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [documentToDelete, setDocumentToDelete] = useState<string | null>(null);
+  const [pdfViewerOpen, setPdfViewerOpen] = useState(false);
+  const [pdfDocId, setPdfDocId] = useState("");
+  const [pdfDocName, setPdfDocName] = useState("");
+  const [wordViewerOpen, setWordViewerOpen] = useState(false);
+  const [wordViewDocId, setWordViewDocId] = useState("");
   const [userDialogOpen, setUserDialogOpen] = useState(false);
   const [editUserDialogOpen, setEditUserDialogOpen] = useState(false);
-  const [selectedUser, setSelectedUser] = useState<any>(null);
   const [deptDialogOpen, setDeptDialogOpen] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<any>(null);
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
   const { toast } = useToast();
 
@@ -562,7 +595,6 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
     resolver: zodResolver(departmentFormSchema),
     defaultValues: {
       name: "",
-      code: "", // Keeping this empty string to satisfy types if needed, but the field is removed from form
     },
   });
 
@@ -579,6 +611,35 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
   const { data: documentsData, isLoading: documentsLoading } = useQuery<AdminDocuments>({
     queryKey: ["/api/admin/documents"],
     refetchInterval: 5000,
+  });
+
+  const deleteDocumentMutation = useMutation({
+    mutationFn: async (docId: string) => {
+      const response = await fetch(`/api/documents/${docId}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) {
+        throw new Error("Failed to delete document");
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/documents"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/stats"] });
+      toast({
+        title: "Document deleted",
+        description: "The document has been successfully removed.",
+      });
+      setDeleteConfirmOpen(false);
+      setDocumentToDelete(null);
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to delete document.",
+        variant: "destructive",
+      });
+    },
   });
 
   // Query for dynamic departments (ones that can be deleted)
@@ -681,6 +742,17 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
   const handleView = (doc: Document) => {
     setSelectedDoc(doc);
     setViewDialogOpen(true);
+  };
+
+  const handleViewPDF = (doc: Document) => {
+    setPdfDocId(doc.id);
+    setPdfDocName(doc.docName);
+    setPdfViewerOpen(true);
+  };
+
+  const handleViewWord = (doc: Document) => {
+    setWordViewDocId(doc.id);
+    setWordViewerOpen(true);
   };
 
   const handleDownload = (doc: Document) => {
@@ -800,6 +872,40 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
     }
   };
 
+  const handleDeleteDocument = (docId: string) => {
+    setDocumentToDelete(docId);
+    setDeleteConfirmOpen(true);
+  };
+
+  const confirmDeleteDocument = () => {
+    if (documentToDelete) {
+      deleteDocumentMutation.mutate(documentToDelete);
+    }
+  };
+
+  const sortDocuments = (docs: any[]) => {
+    return [...docs].sort((a, b) => {
+      const dateA = new Date(a.dateOfIssue || a.createdAt || 0).getTime();
+      const dateB = new Date(b.dateOfIssue || b.createdAt || 0).getTime();
+
+      if (sortBy === "newest") return dateB - dateA;
+      if (sortBy === "oldest") return dateA - dateB;
+      if (sortBy === "doc-asc") return (a.docNumber || "").localeCompare(b.docNumber || "");
+      if (sortBy === "doc-desc") return (b.docNumber || "").localeCompare(a.docNumber || "");
+      return 0;
+    });
+  };
+
+  const getFilteredAndSortedDocs = (docs: any[]) => {
+    const sorted = sortDocuments(docs);
+    if (!searchQuery) return sorted;
+    return sorted.filter(doc =>
+      doc.docName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      doc.docNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (doc.preparerName && doc.preparerName.toLowerCase().includes(searchQuery.toLowerCase()))
+    );
+  };
+
   const toggleCategory = (categoryId: string) => {
     setExpandedCategories(prev => ({
       ...prev,
@@ -824,12 +930,14 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
     { name: 'Approved', value: stats.documents.approved },
     { name: 'Issued', value: stats.documents.issued },
     { name: 'Declined', value: stats.documents.declined },
+    { name: 'Obsolete', value: stats.documents.obsolete || 0 },
   ].filter(d => d.value > 0) : [];
 
-  const pendingDocs = documentsData?.documents.filter(d => d.status === "pending") || [];
-  const approvedDocs = documentsData?.documents.filter(d => d.status === "approved") || [];
-  const issuedDocs = documentsData?.documents.filter(d => d.status === "issued") || [];
-  const declinedDocs = documentsData?.documents.filter(d => d.status === "declined") || [];
+  const pendingDocs = documentsData?.documents.filter(d => (d.status || "").toLowerCase() === "pending") || [];
+  const approvedDocs = documentsData?.documents.filter(d => (d.status || "").toLowerCase() === "approved") || [];
+  const issuedDocs = documentsData?.documents.filter(d => (d.status || "").toLowerCase() === "issued") || [];
+  const declinedDocs = documentsData?.documents.filter(d => (d.status || "").toLowerCase() === "declined") || [];
+  const obsoleteDocs = documentsData?.documents.filter(d => (d.status || "").toLowerCase() === "obsolete") || [];
 
   return (
     <DashboardLayout
@@ -847,12 +955,28 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
       >
         <motion.div variants={itemVariants} className="flex items-center justify-between flex-wrap gap-4">
           <div>
-            <h2 className="text-lg font-bold text-foreground">Admin Dashboard</h2>
+            <h2 className="text-lg font-bold text-foreground">
+              Admin Dashboard ({adminName || "Admin User"} - {departmentName || "General"})
+            </h2>
             <p className="text-[11px] text-muted-foreground">
               Complete system oversight with real-time analytics
             </p>
           </div>
           <div className="flex items-center gap-2 flex-wrap bg-slate-100 p-1 rounded-lg">
+            <div className="flex items-center gap-2 px-2 mr-2 border-r border-slate-300">
+              <span className="text-[10px] font-medium text-muted-foreground whitespace-nowrap">Sort:</span>
+              <Select value={sortBy} onValueChange={setSortBy}>
+                <SelectTrigger className="h-7 w-[120px] text-[10px] bg-white">
+                  <SelectValue placeholder="Sort order" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="newest">Newest First</SelectItem>
+                  <SelectItem value="oldest">Oldest First</SelectItem>
+                  <SelectItem value="doc-asc">Document No. (A-Z)</SelectItem>
+                  <SelectItem value="doc-desc">Document No. (Z-A)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <Button size="sm" className="h-8 text-xs font-bold" onClick={handleExportLogs} data-testid="button-export-logs">
               <Download className="w-3.5 h-3.5 mr-1.5" />
               Export Report
@@ -889,6 +1013,14 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
             trendUp={true}
             color="bg-green-500"
             delay={0.2}
+          />
+          <StatCardAnimated
+            title="Obsolete Documents"
+            value={stats?.documents.obsolete || 0}
+            icon={Archive}
+            trend="Superseded versions"
+            color="bg-slate-500"
+            delay={0.3}
           />
           <StatCardAnimated
             title="Total Users"
@@ -1039,9 +1171,9 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
                           <Badge
                             variant="secondary"
                             className={`text-[9px] px-1 py-0 h-4 font-bold ${doc.status === 'issued' ? 'bg-green-500/10 text-green-600' :
-                                doc.status === 'approved' ? 'bg-blue-500/10 text-blue-600' :
-                                  doc.status === 'pending' ? 'bg-amber-500/10 text-amber-600' :
-                                    'bg-red-500/10 text-red-600'
+                              doc.status === 'approved' ? 'bg-blue-500/10 text-blue-600' :
+                                doc.status === 'pending' ? 'bg-amber-500/10 text-amber-600' :
+                                  'bg-red-500/10 text-red-600'
                               }`}
                           >
                             {doc.status.charAt(0).toUpperCase() + doc.status.slice(1)}
@@ -1121,12 +1253,13 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
                   </div>
 
                   <Tabs defaultValue="all" className="w-full">
-                    <TabsList className="grid w-full grid-cols-5">
+                    <TabsList className="grid w-full grid-cols-6">
                       <TabsTrigger value="all">All ({documentsData?.documents.length || 0})</TabsTrigger>
                       <TabsTrigger value="pending">Pending ({pendingDocs.length})</TabsTrigger>
                       <TabsTrigger value="approved">Approved ({approvedDocs.length})</TabsTrigger>
                       <TabsTrigger value="issued">Issued ({issuedDocs.length})</TabsTrigger>
                       <TabsTrigger value="declined">Declined ({declinedDocs.length})</TabsTrigger>
+                      <TabsTrigger value="obsolete">Obsolete ({obsoleteDocs.length})</TabsTrigger>
                     </TabsList>
 
                     <TabsContent value="all" className="mt-6">
@@ -1156,7 +1289,7 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
                               </tr>
                             </thead>
                             <tbody>
-                              {documentsData.documents.map((doc, index) => (
+                              {getFilteredAndSortedDocs(documentsData.documents).map((doc, index) => (
                                 <tr
                                   key={`doc-${doc.id || index}`}
                                   className="border-b border-slate-200 hover:bg-slate-50 even:bg-slate-50/50 transition-colors"
@@ -1169,9 +1302,10 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
                                     <Badge
                                       variant="outline"
                                       className={`text-[9px] px-1 py-0 h-4 ${doc.status.toLowerCase() === 'pending' ? 'bg-amber-500/10 text-amber-600 border-amber-200' :
-                                          doc.status.toLowerCase() === 'approved' ? 'bg-blue-500/10 text-blue-600 border-blue-200' :
-                                            doc.status.toLowerCase() === 'issued' ? 'bg-green-500/10 text-green-600 border-green-200' :
-                                              doc.status.toLowerCase() === 'declined' ? 'bg-red-500/10 text-red-600 border-red-200' :
+                                        doc.status.toLowerCase() === 'approved' ? 'bg-blue-500/10 text-blue-600 border-blue-200' :
+                                          doc.status.toLowerCase() === 'issued' ? 'bg-green-500/10 text-green-600 border-green-200' :
+                                            doc.status.toLowerCase() === 'declined' ? 'bg-red-500/10 text-red-600 border-red-200' :
+                                              doc.status.toLowerCase() === 'obsolete' ? 'bg-slate-500/10 text-slate-600 border-slate-200' :
                                                 'bg-gray-500/10 text-gray-600 border-gray-200'
                                         }`}
                                     >
@@ -1183,29 +1317,40 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
                                   <td className="px-2 py-1 border-r border-slate-200">
                                     {doc.departments && doc.departments.length > 0 ? (
                                       <span className="text-[10px] text-slate-500 leading-tight">
-                                        {doc.departments.slice(0, 2).map(d => d.name).join(', ')}
+                                        {doc.departments.slice(0, 2).map((d: { name: string }) => d.name).join(', ')}
                                         {doc.departments.length > 2 && ` +${doc.departments.length - 2}`}
                                       </span>
                                     ) : '-'}
                                   </td>
                                   <td className="px-2 py-1">
-                                    <Button
-                                      size="sm"
-                                      variant="ghost"
-                                      className="h-6 w-6 p-0"
-                                      onClick={() => handleView({
-                                        id: doc.id,
-                                        docName: doc.docName,
-                                        docNumber: doc.docNumber,
-                                        status: doc.status.charAt(0).toUpperCase() + doc.status.slice(1) as any,
-                                        dateOfIssue: doc.dateOfIssue ? new Date(doc.dateOfIssue).toISOString().split('T')[0] : '',
-                                        revisionNo: doc.revisionNo,
-                                        preparedBy: doc.preparerName || 'Unknown'
-                                      })}
-                                      data-testid={`button-view-${doc.id}`}
-                                    >
-                                      <Eye className="w-3.5 h-3.5" />
-                                    </Button>
+                                    <div className="flex items-center gap-1">
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="h-6 w-6 p-0"
+                                        onClick={() => handleView({
+                                          id: doc.id,
+                                          docName: doc.docName,
+                                          docNumber: doc.docNumber,
+                                          status: doc.status.charAt(0).toUpperCase() + doc.status.slice(1) as any,
+                                          dateOfIssue: doc.dateOfIssue ? new Date(doc.dateOfIssue).toISOString().split('T')[0] : '',
+                                          revisionNo: doc.revisionNo,
+                                          preparedBy: doc.preparerName || 'Unknown'
+                                        })}
+                                        data-testid={`button-view-${doc.id}`}
+                                      >
+                                        <Eye className="w-3.5 h-3.5" />
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="h-6 w-6 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                        onClick={() => handleDeleteDocument(doc.id)}
+                                        data-testid={`button-delete-${doc.id}`}
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </Button>
+                                    </div>
                                   </td>
                                 </tr>
                               ))}
@@ -1244,7 +1389,7 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
                                 </tr>
                               </thead>
                               <tbody>
-                                {pendingDocs.map((doc, index) => (
+                                {getFilteredAndSortedDocs(pendingDocs).map((doc, index) => (
                                   <tr key={`pending-${doc.id || index}`} className="border-b border-slate-200 hover:bg-slate-50 even:bg-slate-50/50 transition-colors">
                                     <td className="px-2 py-1 border-r border-slate-200 font-mono text-[10px] text-slate-600">{doc.docNumber}</td>
                                     <td className="px-2 py-1 border-r border-slate-200 text-slate-800 font-medium">{doc.docName}</td>
@@ -1254,17 +1399,28 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
                                     <td className="px-2 py-1 border-r border-slate-200">
                                       {doc.departments && doc.departments.length > 0 ? (
                                         <span className="text-[10px] text-slate-500 leading-tight">
-                                          {doc.departments.slice(0, 2).map(d => d.name).join(', ')}
+                                          {doc.departments.slice(0, 2).map((d: { name: string }) => d.name).join(', ')}
                                           {doc.departments.length > 2 && ` +${doc.departments.length - 2}`}
                                         </span>
                                       ) : '-'}
                                     </td>
                                     <td className="px-2 py-1">
-                                      <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => handleView({
-                                        id: doc.id, docName: doc.docName, docNumber: doc.docNumber,
-                                        status: "Pending", dateOfIssue: doc.dateOfIssue ? new Date(doc.dateOfIssue).toISOString().split('T')[0] : '',
-                                        revisionNo: doc.revisionNo, preparedBy: doc.preparerName || 'Unknown'
-                                      })}><Eye className="w-3.5 h-3.5" /></Button>
+                                      <div className="flex items-center gap-1">
+                                        <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => handleView({
+                                          id: doc.id, docName: doc.docName, docNumber: doc.docNumber,
+                                          status: "Pending" as any, dateOfIssue: doc.dateOfIssue ? new Date(doc.dateOfIssue).toISOString().split('T')[0] : '',
+                                          revisionNo: doc.revisionNo, preparedBy: doc.preparerName || 'Unknown'
+                                        })}><Eye className="w-3.5 h-3.5" /></Button>
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          className="h-6 w-6 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                          onClick={() => handleDeleteDocument(doc.id)}
+                                          data-testid={`button-delete-pending-${doc.id}`}
+                                        >
+                                          <Trash2 className="w-3.5 h-3.5" />
+                                        </Button>
+                                      </div>
                                     </td>
                                   </tr>
                                 ))}
@@ -1304,7 +1460,7 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
                                 </tr>
                               </thead>
                               <tbody>
-                                {approvedDocs.map((doc, index) => (
+                                {getFilteredAndSortedDocs(approvedDocs).map((doc, index) => (
                                   <tr key={`approved-${doc.id || index}`} className="border-b border-slate-200 hover:bg-slate-50 even:bg-slate-50/50 transition-colors">
                                     <td className="px-2 py-1 border-r border-slate-200 font-mono text-[10px] text-slate-600">{doc.docNumber}</td>
                                     <td className="px-2 py-1 border-r border-slate-200 text-slate-800 font-medium">{doc.docName}</td>
@@ -1313,11 +1469,22 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
                                     <td className="px-2 py-1 border-r border-slate-200 text-[10px] text-slate-600">{doc.approverName || '-'}</td>
                                     <td className="px-2 py-1 border-r border-slate-200 text-[10px] text-slate-500">{doc.approvedAt ? new Date(doc.approvedAt).toLocaleDateString('en-GB') : '-'}</td>
                                     <td className="px-2 py-1">
-                                      <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => handleView({
-                                        id: doc.id, docName: doc.docName, docNumber: doc.docNumber,
-                                        status: "Approved", dateOfIssue: doc.dateOfIssue ? new Date(doc.dateOfIssue).toISOString().split('T')[0] : '',
-                                        revisionNo: doc.revisionNo, preparedBy: doc.preparerName || 'Unknown'
-                                      })}><Eye className="w-3.5 h-3.5" /></Button>
+                                      <div className="flex items-center gap-1">
+                                        <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => handleView({
+                                          id: doc.id, docName: doc.docName, docNumber: doc.docNumber,
+                                          status: "Approved" as any, dateOfIssue: doc.dateOfIssue ? new Date(doc.dateOfIssue).toISOString().split('T')[0] : '',
+                                          revisionNo: doc.revisionNo, preparedBy: doc.preparerName || 'Unknown'
+                                        })}><Eye className="w-3.5 h-3.5" /></Button>
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          className="h-6 w-6 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                          onClick={() => handleDeleteDocument(doc.id)}
+                                          data-testid={`button-delete-approved-${doc.id}`}
+                                        >
+                                          <Trash2 className="w-3.5 h-3.5" />
+                                        </Button>
+                                      </div>
                                     </td>
                                   </tr>
                                 ))}
@@ -1357,7 +1524,7 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
                                 </tr>
                               </thead>
                               <tbody>
-                                {issuedDocs.map((doc, index) => (
+                                {getFilteredAndSortedDocs(issuedDocs).map((doc, index) => (
                                   <tr key={`issued-${doc.id || index}`} className="border-b border-slate-200 hover:bg-slate-50 even:bg-slate-50/50 transition-colors">
                                     <td className="px-2 py-1 border-r border-slate-200 font-mono text-[10px] text-slate-600">{doc.docNumber}</td>
                                     <td className="px-2 py-1 border-r border-slate-200 text-slate-800 font-medium">{doc.docName}</td>
@@ -1366,11 +1533,22 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
                                     <td className="px-2 py-1 border-r border-slate-200 text-[10px] text-slate-600">{doc.issuerName || '-'}</td>
                                     <td className="px-2 py-1 border-r border-slate-200 text-[10px] text-slate-500">{doc.issuedAt ? new Date(doc.issuedAt).toLocaleDateString('en-GB') : '-'}</td>
                                     <td className="px-2 py-1">
-                                      <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => handleView({
-                                        id: doc.id, docName: doc.docName, docNumber: doc.docNumber,
-                                        status: "Issued", dateOfIssue: doc.dateOfIssue ? new Date(doc.dateOfIssue).toISOString().split('T')[0] : '',
-                                        revisionNo: doc.revisionNo, preparedBy: doc.preparerName || 'Unknown'
-                                      })}><Eye className="w-3.5 h-3.5" /></Button>
+                                      <div className="flex items-center gap-1">
+                                        <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => handleView({
+                                          id: doc.id, docName: doc.docName, docNumber: doc.docNumber,
+                                          status: "Issued" as any, dateOfIssue: doc.dateOfIssue ? new Date(doc.dateOfIssue).toISOString().split('T')[0] : '',
+                                          revisionNo: doc.revisionNo, preparedBy: doc.preparerName || 'Unknown'
+                                        })}><Eye className="w-3.5 h-3.5" /></Button>
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          className="h-6 w-6 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                          onClick={() => handleDeleteDocument(doc.id)}
+                                          data-testid={`button-delete-issued-${doc.id}`}
+                                        >
+                                          <Trash2 className="w-3.5 h-3.5" />
+                                        </Button>
+                                      </div>
                                     </td>
                                   </tr>
                                 ))}
@@ -1410,7 +1588,7 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
                                 </tr>
                               </thead>
                               <tbody>
-                                {declinedDocs.map((doc, index) => (
+                                {getFilteredAndSortedDocs(declinedDocs).map((doc, index) => (
                                   <tr key={`declined-${doc.id || index}`} className="border-b border-slate-200 hover:bg-slate-50 even:bg-slate-50/50 transition-colors">
                                     <td className="px-2 py-1 border-r border-slate-200 font-mono text-[10px] text-slate-600">{doc.docNumber}</td>
                                     <td className="px-2 py-1 border-r border-slate-200 text-slate-800 font-medium">{doc.docName}</td>
@@ -1421,11 +1599,22 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
                                       {doc.declineRemarks || '-'}
                                     </td>
                                     <td className="px-2 py-1">
-                                      <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => handleView({
-                                        id: doc.id, docName: doc.docName, docNumber: doc.docNumber,
-                                        status: "Declined", dateOfIssue: doc.dateOfIssue ? new Date(doc.dateOfIssue).toISOString().split('T')[0] : '',
-                                        revisionNo: doc.revisionNo, preparedBy: doc.preparerName || 'Unknown'
-                                      })}><Eye className="w-3.5 h-3.5" /></Button>
+                                      <div className="flex items-center gap-1">
+                                        <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => handleView({
+                                          id: doc.id, docName: doc.docName, docNumber: doc.docNumber,
+                                          status: "Declined" as any, dateOfIssue: doc.dateOfIssue ? new Date(doc.dateOfIssue).toISOString().split('T')[0] : '',
+                                          revisionNo: doc.revisionNo, preparedBy: doc.preparerName || 'Unknown'
+                                        })}><Eye className="w-3.5 h-3.5" /></Button>
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          className="h-6 w-6 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                          onClick={() => handleDeleteDocument(doc.id)}
+                                          data-testid={`button-delete-declined-${doc.id}`}
+                                        >
+                                          <Trash2 className="w-3.5 h-3.5" />
+                                        </Button>
+                                      </div>
                                     </td>
                                   </tr>
                                 ))}
@@ -1437,6 +1626,58 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
                         <div className="border rounded-lg p-12 text-center">
                           <XCircle className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
                           <p className="text-sm text-muted-foreground">No declined documents</p>
+                        </div>
+                      )}
+                    </TabsContent>
+                    <TabsContent value="obsolete" className="mt-6">
+                      {obsoleteDocs.length > 0 ? (
+                        <div className="overflow-x-auto">
+                          <table className="w-full border-collapse border border-slate-300 text-xs">
+                            <thead>
+                              <tr className="bg-slate-100 border-b border-slate-300">
+                                <th className="text-left px-2 py-1.5 font-bold text-slate-700 uppercase border-r border-slate-300">Doc Number</th>
+                                <th className="text-left px-2 py-1.5 font-bold text-slate-700 uppercase border-r border-slate-300">Document Name</th>
+                                <th className="text-left px-2 py-1.5 font-bold text-slate-700 uppercase border-r border-slate-300">Rev</th>
+                                <th className="text-left px-2 py-1.5 font-bold text-slate-700 uppercase border-r border-slate-300">Preparer</th>
+                                <th className="text-left px-2 py-1.5 font-bold text-slate-700 uppercase border-r border-slate-300">Date of Rev</th>
+                                <th className="text-left px-2 py-1.5 font-bold text-slate-700 uppercase border-r border-slate-300">Departments</th>
+                                <th className="text-left px-2 py-1.5 font-bold text-slate-700 uppercase">Actions</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {getFilteredAndSortedDocs(obsoleteDocs).map((doc, index) => (
+                                <tr key={`obsolete-${doc.id || index}`} className="border-b border-slate-200 hover:bg-slate-50 even:bg-slate-50/50 transition-colors">
+                                  <td className="px-2 py-1 border-r border-slate-200 font-mono text-[10px] text-slate-600">{doc.docNumber}</td>
+                                  <td className="px-2 py-1 border-r border-slate-200 text-slate-800 font-medium">{doc.docName}</td>
+                                  <td className="px-2 py-1 border-r border-slate-200 text-center text-slate-700">{doc.revisionNo}</td>
+                                  <td className="px-2 py-1 border-r border-slate-200 text-[10px] text-slate-600">{doc.preparerName || 'Unknown'}</td>
+                                  <td className="px-2 py-1 border-r border-slate-200 text-[10px] text-slate-500">{doc.dateOfRev ? new Date(doc.dateOfRev).toLocaleDateString('en-GB') : '-'}</td>
+                                  <td className="px-2 py-1 border-r border-slate-200">
+                                    {doc.departments && doc.departments.length > 0 ? (
+                                      <span className="text-[10px] text-slate-500 leading-tight">
+                                        {doc.departments.slice(0, 2).map((d: { name: string }) => d.name).join(', ')}
+                                        {doc.departments.length > 2 && ` +${doc.departments.length - 2}`}
+                                      </span>
+                                    ) : '-'}
+                                  </td>
+                                  <td className="px-2 py-1">
+                                    <div className="flex items-center gap-1">
+                                      <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => handleView({
+                                        id: doc.id, docName: doc.docName, docNumber: doc.docNumber,
+                                        status: "Obsolete" as any, dateOfIssue: doc.dateOfIssue ? new Date(doc.dateOfIssue).toISOString().split('T')[0] : '',
+                                        revisionNo: doc.revisionNo, preparedBy: doc.preparerName || 'Unknown'
+                                      })}><Eye className="w-3.5 h-3.5" /></Button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : (
+                        <div className="border rounded-lg p-12 text-center">
+                          <Archive className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+                          <p className="text-sm text-muted-foreground">No obsolete documents found</p>
                         </div>
                       )}
                     </TabsContent>
@@ -1734,6 +1975,8 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
         open={viewDialogOpen}
         onClose={() => setViewDialogOpen(false)}
         onDownload={handleDownload}
+        onViewPdf={handleViewPDF}
+        onViewWord={handleViewWord}
       />
 
       {/* Add User Dialog */}
@@ -2114,6 +2357,45 @@ export default function AdminDashboard({ onLogout, userId = "admin-1" }: AdminDa
           </Form>
         </DialogContent>
       </Dialog>
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertCircle className="w-5 h-5" />
+              Confirm Deletion
+            </DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete this document? This action cannot be undone and will remove all associated records including history and copies.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setDeleteConfirmOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmDeleteDocument}
+              disabled={deleteDocumentMutation.isPending}
+            >
+              {deleteDocumentMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Delete Permanently
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <PDFViewer
+        documentId={pdfDocId}
+        userId={userId}
+        open={pdfViewerOpen}
+        onClose={() => setPdfViewerOpen(false)}
+        documentName={pdfDocName}
+      />
+      <WordDocumentViewer
+        documentId={wordViewDocId}
+        open={wordViewerOpen}
+        onOpenChange={setWordViewerOpen}
+      />
     </DashboardLayout>
   );
 }

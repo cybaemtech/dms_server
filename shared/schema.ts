@@ -78,9 +78,9 @@ export interface Document {
   previousVersionId: string | null;
   pdfFilePath: string | null;
   wordFilePath: string | null;
-  creatorData: { id: string; username: string; fullName: string; role: string } | null;
-  approverData: { id: string; username: string; fullName: string; role: string } | null;
-  issuerData: { id: string; username: string; fullName: string; role: string } | null;
+  creatorData: { id: string; username: string; fullName: string; role: string; departmentId: string | null; departmentName: string | null } | null;
+  approverData: { id: string; username: string; fullName: string; role: string; departmentId: string | null; departmentName: string | null } | null;
+  issuerData: { id: string; username: string; fullName: string; role: string; departmentId: string | null; departmentName: string | null } | null;
   issueNo: string | null;
   originalDateOfIssue: Date | null;
   preparerName: string | null;
@@ -88,6 +88,9 @@ export interface Document {
   pageCount: number | null;
   location: string | null;
   dateOfRev: Date | null;
+  declinedBy: string | null;
+  declinerName: string | null;
+  declinedAt: Date | null;
 }
 
 export interface InsertDocument {
@@ -112,9 +115,9 @@ export interface InsertDocument {
   previousVersionId?: string | null;
   pdfFilePath?: string | null;
   wordFilePath?: string | null;
-  creatorData?: { id: string; username: string; fullName: string; role: string } | null;
-  approverData?: { id: string; username: string; fullName: string; role: string } | null;
-  issuerData?: { id: string; username: string; fullName: string; role: string } | null;
+  creatorData?: { id: string; username: string; fullName: string; role: string; departmentId: string | null; departmentName: string | null } | null;
+  approverData?: { id: string; username: string; fullName: string; role: string; departmentId: string | null; departmentName: string | null } | null;
+  issuerData?: { id: string; username: string; fullName: string; role: string; departmentId: string | null; departmentName: string | null } | null;
   issueNo?: string | null;
   originalDateOfIssue?: Date | string | null;
   preparerName?: string | null;
@@ -122,6 +125,9 @@ export interface InsertDocument {
   pageCount?: number | null;
   location?: string | null;
   dateOfRev?: Date | string | null;
+  declinedBy?: string | null;
+  declinerName?: string | null;
+  declinedAt?: Date | string | null;
 }
 
 // =============================================
@@ -208,3 +214,21 @@ export interface DocumentDepartment {
   departmentId: string;
   createdAt: Date;
 }
+
+// =============================================
+// App Settings
+// =============================================
+export interface AppSetting {
+  id: string;
+  settingKey: string;
+  settingValue: string | null;
+  description: string | null;
+  updatedAt: Date;
+}
+
+export interface InsertAppSetting {
+  settingKey: string;
+  settingValue?: string | null;
+  description?: string | null;
+}
+

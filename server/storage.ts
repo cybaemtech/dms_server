@@ -1,4 +1,15 @@
 import { getPool, sql } from "./db";
+import fs from 'fs';
+
+const debugLog = (msg: string) => {
+  const logPath = 'c:\\inetpub\\wwwroot\\dms\\debug.log';
+  const timestamp = new Date().toISOString();
+  try {
+    fs.appendFileSync(logPath, `[${timestamp}] ${msg}\n`);
+  } catch (e) {
+    console.error("Failed to write to debug log", e);
+  }
+};
 import {
   type User,
   type InsertUser,
@@ -13,7 +24,9 @@ import {
   type PrintLog,
   type InsertPrintLog,
   type DocumentRecipient,
-  type InsertDocumentRecipient
+  type InsertDocumentRecipient,
+  type AppSetting,
+  type InsertAppSetting
 } from "@shared/schema";
 
 export interface IStorage {
@@ -24,13 +37,14 @@ export interface IStorage {
   deleteUser(id: string): Promise<void>;
 
   getDocument(id: string): Promise<Document | undefined>;
-  getDocumentsByStatus(status: string, userId?: string): Promise<Document[]>;
+  getDocumentsByStatus(status: string, latestOnly?: boolean): Promise<Document[]>;
   getDocumentsByUser(userId: string): Promise<Document[]>;
   getDocumentsByDocNumber(docNumber: string): Promise<Document[]>;
-  getDocumentsByDepartment(departmentId: string, status?: string): Promise<Document[]>;
+  getDocumentRevisions(docNumber: string): Promise<Document[]>;
+  getDocumentsByDepartment(departmentId: string, status?: string, latestOnly?: boolean): Promise<Document[]>;
   createDocument(document: InsertDocument): Promise<Document>;
   updateDocument(id: string, updates: Partial<Document>): Promise<Document | undefined>;
-  getGlobalNextRevisionNo(): Promise<number>;
+  getGlobalNextRevisionNo(docNumber?: string): Promise<number>;
 
   getDepartments(): Promise<Department[]>;
   createDepartment(department: InsertDepartment): Promise<Department>;
@@ -57,6 +71,10 @@ export interface IStorage {
   getDocumentRecipients(documentId: string): Promise<DocumentRecipient[]>;
   getUserAccessibleDocuments(userId: string): Promise<Document[]>;
   hasUserPrintedDocument(userId: string, documentId: string): Promise<boolean>;
+  deleteDocument(id: string): Promise<void>;
+
+  getSetting(key: string): Promise<AppSetting | undefined>;
+  updateSetting(key: string, value: string): Promise<AppSetting>;
 }
 
 // Helper: Map SQL Server row to User object
@@ -96,7 +114,7 @@ function mapDocument(row: any): Document {
     id: row.id,
     docName: row.doc_name,
     docNumber: row.doc_number,
-    status: row.status,
+    status: row.status ? row.status.trim() : 'pending',
     dateOfIssue: row.date_of_issue || null,
     revisionNo: row.revision_no || 0,
     preparedBy: row.prepared_by,
@@ -122,13 +140,16 @@ function mapDocument(row: any): Document {
     creatorData: row.creator_data ? (typeof row.creator_data === 'string' ? JSON.parse(row.creator_data) : row.creator_data) : null,
     approverData: row.approver_data ? (typeof row.approver_data === 'string' ? JSON.parse(row.approver_data) : row.approver_data) : null,
     issuerData: row.issuer_data ? (typeof row.issuer_data === 'string' ? JSON.parse(row.issuer_data) : row.issuer_data) : null,
-    issueNo: row.issue_no || null,
     originalDateOfIssue: row.original_date_of_issue || null,
     preparerName: row.preparer_name || null,
     approverName: row.approver_name || null,
     pageCount: row.page_count || null,
     location: row.location || null,
     dateOfRev: row.date_of_rev || null,
+    issueNo: row.issue_no || null,
+    declinedBy: row.declined_by || null,
+    declinerName: row.decliner_name || null,
+    declinedAt: row.declined_at || null,
   };
 }
 
@@ -359,11 +380,29 @@ export class SqlServerStorage implements IStorage {
     return result.recordset.length > 0 ? mapDocument(result.recordset[0]) : undefined;
   }
 
-  async getDocumentsByStatus(status: string): Promise<Document[]> {
+  async getDocumentsByStatus(status: string, latestOnly: boolean = false): Promise<Document[]> {
     const pool = await getPool();
+    let query = 'SELECT * FROM documents WHERE status = @status';
+
+    if (latestOnly && status === 'issued') {
+      query = `
+        SELECT d1.* FROM documents d1 
+        WHERE TRIM(LOWER(d1.status)) = TRIM(LOWER(@status))
+        AND d1.revision_no = (
+          SELECT MAX(d2.revision_no) 
+          FROM documents d2 
+          WHERE TRIM(LOWER(d2.doc_number)) = TRIM(LOWER(d1.doc_number)) 
+          AND TRIM(LOWER(ISNULL(d2.location, ''))) = TRIM(LOWER(ISNULL(d1.location, '')))
+          AND TRIM(LOWER(d2.status)) = TRIM(LOWER(@status))
+        )
+      `;
+    }
+
+    query += ' ORDER BY created_at DESC';
+
     const result = await pool.request()
       .input('status', sql.NVarChar, status)
-      .query('SELECT * FROM documents WHERE status = @status ORDER BY created_at DESC');
+      .query(query);
     return result.recordset.map(mapDocument);
   }
 
@@ -375,47 +414,86 @@ export class SqlServerStorage implements IStorage {
     return result.recordset.map(mapDocument);
   }
 
-  async getDocumentsByDocNumber(docNumber: string): Promise<Document[]> {
+  async getDocumentsByDocNumber(docNumber: string, location?: string): Promise<Document[]> {
     const pool = await getPool();
-    const result = await pool.request()
-      .input('docNumber', sql.NVarChar, docNumber)
-      .query('SELECT * FROM documents WHERE doc_number = @docNumber ORDER BY revision_no DESC');
+    const request = pool.request().input('docNumber', sql.NVarChar, docNumber.trim());
+    let query = 'SELECT * FROM documents WHERE TRIM(LOWER(doc_number)) = TRIM(LOWER(@docNumber))';
+
+    // Always include location filter if location is provided (even if null or empty)
+    // to ensure we only get documents for that specific chain.
+    // If location is truly undefined, we skip it (global search across all locations)
+    if (location !== undefined) {
+      query += ' AND TRIM(LOWER(ISNULL(location, \'\'))) = TRIM(LOWER(@location))';
+      request.input('location', sql.NVarChar, location?.trim() || '');
+    }
+
+    query += ' ORDER BY revision_no DESC';
+    const result = await request.query(query);
     return result.recordset.map(mapDocument);
   }
 
-  async getGlobalNextRevisionNo(): Promise<number> {
+  async getDocumentRevisions(docNumber: string, location?: string): Promise<Document[]> {
     const pool = await getPool();
-    const result = await pool.request()
-      .query('SELECT ISNULL(MAX(revision_no), -1) + 1 as nextRev FROM documents');
-    
+    const request = pool.request().input('docNumber', sql.NVarChar, docNumber.trim());
+    let query = 'SELECT * FROM documents WHERE TRIM(LOWER(doc_number)) = TRIM(LOWER(@docNumber))';
+
+    if (location !== undefined) {
+      query += ' AND TRIM(LOWER(ISNULL(location, \'\'))) = TRIM(LOWER(@location))';
+      request.input('location', sql.NVarChar, location?.trim() || '');
+    }
+
+    query += ' ORDER BY revision_no ASC';
+    const result = await request.query(query);
+    return result.recordset.map(mapDocument);
+  }
+
+  async getGlobalNextRevisionNo(docNumber?: string, location?: string): Promise<number> {
+    if (!docNumber || docNumber.trim() === "") return 0;
+
+    const pool = await getPool();
+    const request = pool.request().input('docNumber', sql.NVarChar, docNumber.trim());
+    let query = 'SELECT ISNULL(MAX(revision_no), -1) + 1 as nextRev FROM documents WHERE TRIM(LOWER(doc_number)) = TRIM(LOWER(@docNumber))';
+
+    if (location !== undefined) {
+      query += ' AND TRIM(LOWER(ISNULL(location, \'\'))) = TRIM(LOWER(@location))';
+      request.input('location', sql.NVarChar, location?.trim() || '');
+    }
+
+    const result = await request.query(query);
     return result.recordset[0]?.nextRev ?? 0;
   }
 
-  async getDocumentsByDepartment(departmentId: string, status?: string): Promise<Document[]> {
+  async getDocumentsByDepartment(departmentId: string, status?: string, latestOnly: boolean = false): Promise<Document[]> {
     const pool = await getPool();
     const request = pool.request().input('departmentId', sql.NVarChar, departmentId);
 
-    // Primary: docs explicitly assigned to this department via document_departments
-    // Fallback: docs where creator's department matches AND no document_departments entries exist
+    // Select documents that are either:
+    // 1. Explicitly shared with this department
+    // 2. Created by someone in this department (Ownership)
     let query = `SELECT DISTINCT d.* FROM documents d
                  WHERE (
                    EXISTS (
                      SELECT 1 FROM document_departments dd
                      WHERE dd.document_id = d.id AND dd.department_id = @departmentId
                    )
-                   OR (
-                     NOT EXISTS (
-                       SELECT 1 FROM document_departments dd2 WHERE dd2.document_id = d.id
-                     )
-                     AND d.prepared_by IN (
-                       SELECT id FROM users WHERE department_id = @departmentId
-                     )
+                   OR d.prepared_by IN (
+                     SELECT id FROM users WHERE department_id = @departmentId
                    )
                  )`;
 
     if (status) {
       query += ` AND d.status = @status`;
       request.input('status', sql.NVarChar, status);
+
+      if (latestOnly && status === 'issued') {
+        query += ` AND d.revision_no = (
+          SELECT MAX(d2.revision_no)
+          FROM documents d2
+          WHERE TRIM(LOWER(d2.doc_number)) = TRIM(LOWER(d.doc_number)) 
+          AND TRIM(LOWER(ISNULL(d2.location, ''))) = TRIM(LOWER(ISNULL(d.location, '')))
+          AND TRIM(LOWER(d2.status)) = 'issued'
+        )`;
+      }
     }
 
     query += ` ORDER BY d.created_at DESC`;
@@ -457,8 +535,11 @@ export class SqlServerStorage implements IStorage {
       .input('pageCount', sql.Int, (insertDocument as any).pageCount || null)
       .input('location', sql.NVarChar, (insertDocument as any).location || null)
       .input('dateOfRev', sql.DateTime2, (insertDocument as any).dateOfRev ? new Date((insertDocument as any).dateOfRev) : null)
-      .query(`INSERT INTO documents (id, doc_name, doc_number, status, date_of_issue, revision_no, prepared_by, approved_by, issued_by, content, header_info, footer_info, due_period_years, reason_for_revision, review_due_date, approval_remarks, decline_remarks, previous_version_id, pdf_file_path, word_file_path, creator_data, issue_no, original_date_of_issue, preparer_name, approver_name, page_count, location, date_of_rev)
-              VALUES (@id, @docName, @docNumber, @status, @dateOfIssue, @revisionNo, @preparedBy, @approvedBy, @issuedBy, @content, @headerInfo, @footerInfo, @duePeriodYears, @reasonForRevision, @reviewDueDate, @approvalRemarks, @declineRemarks, @previousVersionId, @pdfFilePath, @wordFilePath, @creatorData, @issueNo, @originalDateOfIssue, @preparerName, @approverName, @pageCount, @location, @dateOfRev)`);
+      .input('declinedBy', sql.NVarChar, (insertDocument as any).declinedBy || null)
+      .input('declinerName', sql.NVarChar, (insertDocument as any).declinerName || null)
+      .input('declinedAt', sql.DateTime2, (insertDocument as any).declinedAt ? new Date((insertDocument as any).declinedAt as any) : null)
+      .query(`INSERT INTO documents (id, doc_name, doc_number, status, date_of_issue, revision_no, prepared_by, approved_by, issued_by, content, header_info, footer_info, due_period_years, reason_for_revision, review_due_date, approval_remarks, decline_remarks, previous_version_id, pdf_file_path, word_file_path, creator_data, issue_no, original_date_of_issue, preparer_name, approver_name, page_count, location, date_of_rev, declined_by, decliner_name, declined_at)
+              VALUES (@id, @docName, @docNumber, @status, @dateOfIssue, @revisionNo, @preparedBy, @approvedBy, @issuedBy, @content, @headerInfo, @footerInfo, @duePeriodYears, @reasonForRevision, @reviewDueDate, @approvalRemarks, @declineRemarks, @previousVersionId, @pdfFilePath, @wordFilePath, @creatorData, @issueNo, @originalDateOfIssue, @preparerName, @approverName, @pageCount, @location, @dateOfRev, @declinedBy, @declinerName, @declinedAt)`);
 
     return (await this.getDocument(docId))!;
   }
@@ -469,16 +550,18 @@ export class SqlServerStorage implements IStorage {
     if (!existing) return undefined;
 
     const setClauses: string[] = [];
-    const request = pool.request().input('id', sql.NVarChar, id);
+    const request = pool.request().input('id', sql.NVarChar(sql.MAX), id);
 
-    if (updates.docName !== undefined) { setClauses.push('doc_name = @docName'); request.input('docName', sql.NVarChar, updates.docName); }
-    if (updates.docNumber !== undefined) { setClauses.push('doc_number = @docNumber'); request.input('docNumber', sql.NVarChar, updates.docNumber); }
-    if (updates.status !== undefined) { setClauses.push('status = @status'); request.input('status', sql.NVarChar, updates.status); }
+    console.log(`[Storage] Updating document ${id} with:`, updates);
+
+    if (updates.docName !== undefined) { setClauses.push('doc_name = @docName'); request.input('docName', sql.NVarChar(sql.MAX), updates.docName); }
+    if (updates.docNumber !== undefined) { setClauses.push('doc_number = @docNumber'); request.input('docNumber', sql.NVarChar(sql.MAX), updates.docNumber); }
+    if (updates.status !== undefined) { setClauses.push('status = @status'); request.input('status', sql.NVarChar(sql.MAX), updates.status); }
     if (updates.dateOfIssue !== undefined) { setClauses.push('date_of_issue = @dateOfIssue'); request.input('dateOfIssue', sql.DateTime2, updates.dateOfIssue ? new Date(updates.dateOfIssue as any) : null); }
     if (updates.revisionNo !== undefined) { setClauses.push('revision_no = @revisionNo'); request.input('revisionNo', sql.Int, updates.revisionNo); }
-    if (updates.preparedBy !== undefined) { setClauses.push('prepared_by = @preparedBy'); request.input('preparedBy', sql.NVarChar, updates.preparedBy); }
-    if (updates.approvedBy !== undefined) { setClauses.push('approved_by = @approvedBy'); request.input('approvedBy', sql.NVarChar, updates.approvedBy); }
-    if (updates.issuedBy !== undefined) { setClauses.push('issued_by = @issuedBy'); request.input('issuedBy', sql.NVarChar, updates.issuedBy); }
+    if (updates.preparedBy !== undefined) { setClauses.push('prepared_by = @preparedBy'); request.input('preparedBy', sql.NVarChar(sql.MAX), updates.preparedBy); }
+    if (updates.approvedBy !== undefined) { setClauses.push('approved_by = @approvedBy'); request.input('approvedBy', sql.NVarChar(sql.MAX), updates.approvedBy); }
+    if (updates.issuedBy !== undefined) { setClauses.push('issued_by = @issuedBy'); request.input('issuedBy', sql.NVarChar(sql.MAX), updates.issuedBy); }
     if (updates.content !== undefined) { setClauses.push('content = @content'); request.input('content', sql.NVarChar(sql.MAX), updates.content); }
     if (updates.headerInfo !== undefined) { setClauses.push('header_info = @headerInfo'); request.input('headerInfo', sql.NVarChar(sql.MAX), updates.headerInfo); }
     if (updates.footerInfo !== undefined) { setClauses.push('footer_info = @footerInfo'); request.input('footerInfo', sql.NVarChar(sql.MAX), updates.footerInfo); }
@@ -490,26 +573,31 @@ export class SqlServerStorage implements IStorage {
     if (updates.approvalRemarks !== undefined) { setClauses.push('approval_remarks = @approvalRemarks'); request.input('approvalRemarks', sql.NVarChar(sql.MAX), updates.approvalRemarks); }
     if (updates.declineRemarks !== undefined) { setClauses.push('decline_remarks = @declineRemarks'); request.input('declineRemarks', sql.NVarChar(sql.MAX), updates.declineRemarks); }
     if (updates.issueRemarks !== undefined) { setClauses.push('issue_remarks = @issueRemarks'); request.input('issueRemarks', sql.NVarChar(sql.MAX), updates.issueRemarks); }
-    if (updates.issuerName !== undefined) { setClauses.push('issuer_name = @issuerName'); request.input('issuerName', sql.NVarChar, updates.issuerName); }
-    if (updates.previousVersionId !== undefined) { setClauses.push('previous_version_id = @previousVersionId'); request.input('previousVersionId', sql.NVarChar, updates.previousVersionId); }
-    if (updates.pdfFilePath !== undefined) { setClauses.push('pdf_file_path = @pdfFilePath'); request.input('pdfFilePath', sql.NVarChar, updates.pdfFilePath); }
-    if (updates.wordFilePath !== undefined) { setClauses.push('word_file_path = @wordFilePath'); request.input('wordFilePath', sql.NVarChar, updates.wordFilePath); }
+    if (updates.issuerName !== undefined) { setClauses.push('issuer_name = @issuerName'); request.input('issuerName', sql.NVarChar(sql.MAX), updates.issuerName); }
+    if (updates.previousVersionId !== undefined) { setClauses.push('previous_version_id = @previousVersionId'); request.input('previousVersionId', sql.NVarChar(sql.MAX), updates.previousVersionId); }
+    if (updates.pdfFilePath !== undefined) { setClauses.push('pdf_file_path = @pdfFilePath'); request.input('pdfFilePath', sql.NVarChar(sql.MAX), updates.pdfFilePath); }
+    if (updates.wordFilePath !== undefined) { setClauses.push('word_file_path = @wordFilePath'); request.input('wordFilePath', sql.NVarChar(sql.MAX), updates.wordFilePath); }
     if (updates.creatorData !== undefined) { setClauses.push('creator_data = @creatorData'); request.input('creatorData', sql.NVarChar(sql.MAX), updates.creatorData ? JSON.stringify(updates.creatorData) : null); }
     if (updates.approverData !== undefined) { setClauses.push('approver_data = @approverData'); request.input('approverData', sql.NVarChar(sql.MAX), updates.approverData ? JSON.stringify(updates.approverData) : null); }
     if (updates.issuerData !== undefined) { setClauses.push('issuer_data = @issuerData'); request.input('issuerData', sql.NVarChar(sql.MAX), updates.issuerData ? JSON.stringify(updates.issuerData) : null); }
-    if (updates.issueNo !== undefined) { setClauses.push('issue_no = @issueNo'); request.input('issueNo', sql.NVarChar, updates.issueNo); }
+    if (updates.issueNo !== undefined) { setClauses.push('issue_no = @issueNo'); request.input('issueNo', sql.NVarChar(sql.MAX), updates.issueNo); }
     if (updates.originalDateOfIssue !== undefined) { setClauses.push('original_date_of_issue = @originalDateOfIssue'); request.input('originalDateOfIssue', sql.DateTime2, updates.originalDateOfIssue ? new Date(updates.originalDateOfIssue as any) : null); }
-    if (updates.preparerName !== undefined) { setClauses.push('preparer_name = @preparerName'); request.input('preparerName', sql.NVarChar, updates.preparerName); }
-    if (updates.approverName !== undefined) { setClauses.push('approver_name = @approverName'); request.input('approverName', sql.NVarChar, updates.approverName); }
+    if (updates.preparerName !== undefined) { setClauses.push('preparer_name = @preparerName'); request.input('preparerName', sql.NVarChar(sql.MAX), updates.preparerName); }
+    if (updates.approverName !== undefined) { setClauses.push('approver_name = @approverName'); request.input('approverName', sql.NVarChar(sql.MAX), updates.approverName); }
     if (updates.pageCount !== undefined) { setClauses.push('page_count = @pageCount'); request.input('pageCount', sql.Int, updates.pageCount); }
-    if (updates.location !== undefined) { setClauses.push('location = @location'); request.input('location', sql.NVarChar, updates.location); }
+    if (updates.location !== undefined) { setClauses.push('location = @location'); request.input('location', sql.NVarChar(sql.MAX), updates.location); }
     if (updates.dateOfRev !== undefined) { setClauses.push('date_of_rev = @dateOfRev'); request.input('dateOfRev', sql.DateTime2, updates.dateOfRev ? new Date(updates.dateOfRev as any) : null); }
+    if (updates.declinedBy !== undefined) { setClauses.push('declined_by = @declinedBy'); request.input('declinedBy', sql.NVarChar(sql.MAX), updates.declinedBy); }
+    if (updates.declinerName !== undefined) { setClauses.push('decliner_name = @declinerName'); request.input('declinerName', sql.NVarChar(sql.MAX), updates.declinerName); }
+    if (updates.declinedAt !== undefined) { setClauses.push('declined_at = @declinedAt'); request.input('declinedAt', sql.DateTime2, updates.declinedAt ? new Date(updates.declinedAt as any) : null); }
 
     // Always update updated_at
     setClauses.push('updated_at = GETDATE()');
 
     if (setClauses.length > 0) {
-      await request.query(`UPDATE documents SET ${setClauses.join(', ')} WHERE id = @id`);
+      const query = `UPDATE documents SET ${setClauses.join(', ')} WHERE id = @id`;
+      debugLog(`[Storage] Executing: ${query}`);
+      await request.query(query);
     }
 
     return this.getDocument(id);
@@ -757,11 +845,18 @@ export class SqlServerStorage implements IStorage {
     const result = await pool.request()
       .input('userId', sql.NVarChar, userId)
       .query(`SELECT DISTINCT d.* FROM documents d
-              INNER JOIN document_recipients dr ON d.id = dr.document_id
-              LEFT JOIN users u ON u.id = @userId
-              WHERE (dr.user_id = @userId OR dr.department_id = u.department_id)
-              AND d.status = 'issued'
-              ORDER BY d.created_at DESC`);
+               INNER JOIN document_recipients dr ON d.id = dr.document_id
+               LEFT JOIN users u ON u.id = @userId
+               WHERE (dr.user_id = @userId OR dr.department_id = u.department_id)
+               AND d.status = 'issued'
+               AND d.revision_no = (
+                 SELECT MAX(d2.revision_no)
+                 FROM documents d2
+                 WHERE TRIM(d2.doc_number) = TRIM(d.doc_number) 
+                 AND ISNULL(d2.location, '') = ISNULL(d.location, '')
+                 AND d2.status = 'issued'
+               )
+               ORDER BY d.created_at DESC`);
     return result.recordset.map(mapDocument);
   }
 
@@ -772,6 +867,89 @@ export class SqlServerStorage implements IStorage {
       .input('documentId', sql.NVarChar, documentId)
       .query('SELECT TOP 1 id FROM print_logs WHERE user_id = @userId AND document_id = @documentId');
     return result.recordset.length > 0;
+  }
+
+  async deleteDocument(id: string): Promise<void> {
+    const pool = await getPool();
+
+    // Check if document exists
+    const doc = await this.getDocument(id);
+    if (!doc) throw new Error(`Document with id ${id} not found`);
+
+    // Admin should be able to delete any document as per requirement
+    // Only allow deleting pending or declined documents was the previous restriction
+    /*
+    if (doc.status !== 'pending' && doc.status !== 'declined') {
+      throw new Error(`Cannot delete document in '${doc.status}' status`);
+    }
+    */
+
+    // Delete related records first
+    // 1. document_departments
+    await pool.request().input('docId', sql.NVarChar, id).query('DELETE FROM document_departments WHERE document_id = @docId');
+
+    // 2. notifications
+    await pool.request().input('docId', sql.NVarChar, id).query('DELETE FROM notifications WHERE document_id = @docId');
+
+    // 3. document_recipients (if any)
+    await pool.request().input('docId', sql.NVarChar, id).query('DELETE FROM document_recipients WHERE document_id = @docId');
+
+    // 4. print_logs (if any)
+    await pool.request().input('docId', sql.NVarChar, id).query('DELETE FROM print_logs WHERE document_id = @docId');
+
+    // 5. control_copies (if any)
+    await pool.request().input('docId', sql.NVarChar, id).query('DELETE FROM control_copies WHERE document_id = @docId');
+
+    // Finally delete the document itself
+    const result = await pool.request()
+      .input('id', sql.NVarChar, id)
+      .query('DELETE FROM documents WHERE id = @id');
+
+    if (result.rowsAffected[0] === 0) {
+      throw new Error(`Failed to delete document ${id}`);
+    }
+  }
+
+  // =============================================
+  // App Settings
+  // =============================================
+  async getSetting(key: string): Promise<AppSetting | undefined> {
+    const pool = await getPool();
+    const result = await pool.request()
+      .input('key', sql.NVarChar, key)
+      .query('SELECT * FROM app_settings WHERE setting_key = @key');
+    if (result.recordset.length > 0) {
+      const row = result.recordset[0];
+      return {
+        id: row.id,
+        settingKey: row.setting_key,
+        settingValue: row.setting_value,
+        description: row.description,
+        updatedAt: row.updated_at
+      };
+    }
+    return undefined;
+  }
+
+  async updateSetting(key: string, value: string): Promise<AppSetting> {
+    const pool = await getPool();
+
+    // Check if exists
+    const existing = await this.getSetting(key);
+
+    if (existing) {
+      await pool.request()
+        .input('key', sql.NVarChar, key)
+        .input('value', sql.NVarChar, value)
+        .query('UPDATE app_settings SET setting_value = @value, updated_at = GETDATE() WHERE setting_key = @key');
+    } else {
+      await pool.request()
+        .input('key', sql.NVarChar, key)
+        .input('value', sql.NVarChar, value)
+        .query("INSERT INTO app_settings (setting_key, setting_value, description) VALUES (@key, @value, 'Auto-generated setting')");
+    }
+
+    return (await this.getSetting(key))!;
   }
 }
 

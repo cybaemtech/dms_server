@@ -5,8 +5,10 @@ import StatCard from "@/components/StatCard";
 import DocumentTable, { Document } from "@/components/DocumentTable";
 import PDFViewer from "@/components/PDFViewer";
 import { Card } from "@/components/ui/card";
-import { FileText, Eye, Printer, Download } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { FileText, Eye, Printer, Download, Search } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { DocumentStatus } from "@/components/StatusBadge";
 
 interface RecipientDashboardProps {
   onLogout?: () => void;
@@ -23,6 +25,11 @@ interface ApiDocument {
   revisionNo: number;
   preparedBy: string;
   preparerName?: string;
+  location?: string;
+  dateOfRev?: string;
+  departments?: Array<{ id: string; name: string }>;
+  issuedAt?: string;
+  createdAt?: string;
 }
 
 interface Notification {
@@ -34,6 +41,7 @@ interface Notification {
 }
 
 export default function RecipientDashboard({ onLogout, userId = "recipient-1", recipientName = "" }: RecipientDashboardProps) {
+  const [searchQuery, setSearchQuery] = useState("");
   const [pdfViewerOpen, setPdfViewerOpen] = useState(false);
   const [pdfDocId, setPdfDocId] = useState<string>("");
   const [pdfDocName, setPdfDocName] = useState<string>("");
@@ -74,15 +82,38 @@ export default function RecipientDashboard({ onLogout, userId = "recipient-1", r
   };
 
   const transformedDocs = (docs: ApiDocument[]): Document[] => {
-    return docs.map((doc) => ({
-      id: doc.id,
-      docName: doc.docName,
-      docNumber: doc.docNumber,
-      status: "Issued" as const,
-      dateOfIssue: doc.dateOfIssue ? new Date(doc.dateOfIssue).toISOString().split("T")[0] : "",
-      revisionNo: doc.revisionNo,
-      preparedBy: doc.preparerName || "Unknown",
-    }));
+    return (docs || [])
+      .filter(doc =>
+        (doc.docName || "").toLowerCase().includes((searchQuery || "").toLowerCase()) ||
+        (doc.docNumber || "").toLowerCase().includes((searchQuery || "").toLowerCase())
+      )
+      .sort((a, b) => new Date(a.issuedAt || a.createdAt || 0).getTime() - new Date(b.issuedAt || b.createdAt || 0).getTime())
+      .map((doc) => {
+      let dateOfIssue = "";
+      try {
+        if (doc.dateOfIssue) {
+          const date = new Date(doc.dateOfIssue);
+          if (!isNaN(date.getTime())) {
+            dateOfIssue = date.toISOString().split("T")[0];
+          }
+        }
+      } catch (e) {
+        console.error("Error formatting dateOfIssue", e);
+      }
+
+      return {
+        id: doc.id,
+        docName: doc.docName || "Untitled",
+        docNumber: doc.docNumber || "NO-NUMBER",
+        status: "Issued" as DocumentStatus,
+        dateOfIssue: dateOfIssue,
+        revisionNo: doc.revisionNo || 0,
+        preparedBy: doc.preparerName || "Unknown",
+        location: doc.location || null,
+        dateOfRev: doc.dateOfRev || null,
+        departments: doc.departments || []
+      };
+    });
   };
 
   const unreadNotifications = notifications.filter((n) => !n.isRead).length;
@@ -129,32 +160,46 @@ export default function RecipientDashboard({ onLogout, userId = "recipient-1", r
           />
         </div>
 
-        <Card className="p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-base font-semibold">Issued Documents</h3>
-            <div className="text-[11px] text-muted-foreground italic">
-              Click "View" to open PDF with control copy watermark
+        <div className="grid grid-cols-1 gap-3">
+          <div className="space-y-4">
+            <div className="relative">
+              <Search className="absolute left-2 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                placeholder="Search documents by title or number..."
+                className="pl-8 h-8 text-[11px] bg-white"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
             </div>
-          </div>
 
-          {isLoading ? (
-            <div className="border rounded-lg p-12 text-center">
-              <p className="text-sm text-muted-foreground">Loading documents...</p>
-            </div>
-          ) : issuedDocuments.length > 0 ? (
-            <DocumentTable
-              documents={transformedDocs(issuedDocuments)}
-              onView={handleViewPDF}
-              onDownload={handleDownload}
-              showActions={true}
-            />
-          ) : (
-            <div className="border rounded-lg p-12 text-center">
-              <FileText className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-              <p className="text-sm text-muted-foreground">No issued documents available</p>
-            </div>
-          )}
-        </Card>
+            <Card className="p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-base font-semibold">Issued Documents</h3>
+                <div className="text-[11px] text-muted-foreground italic">
+                  Click "View" to open PDF with control copy watermark
+                </div>
+              </div>
+
+              {isLoading ? (
+                <div className="border rounded-lg p-12 text-center">
+                  <p className="text-sm text-muted-foreground">Loading documents...</p>
+                </div>
+              ) : issuedDocuments.length > 0 ? (
+                <DocumentTable
+                  documents={transformedDocs(issuedDocuments)}
+                  onView={handleViewPDF}
+                  onDownload={handleDownload}
+                  showActions={true}
+                />
+              ) : (
+                <div className="border rounded-lg p-12 text-center">
+                  <FileText className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+                  <p className="text-sm text-muted-foreground">No issued documents available</p>
+                </div>
+              )}
+            </Card>
+          </div>
+        </div>
 
         <Card className="p-4 bg-blue-50/30 dark:bg-blue-950/20 border-blue-200 dark:border-blue-900 shadow-sm">
           <h3 className="text-base font-semibold mb-2.5 flex items-center gap-2">
@@ -163,7 +208,7 @@ export default function RecipientDashboard({ onLogout, userId = "recipient-1", r
           </h3>
           <div className="space-y-2 text-sm text-muted-foreground">
             <p>
-              <strong className="text-foreground">View & Download:</strong> Documents are available for viewing in PDF format and downloading as Word documents. This ensures accessibility while maintaining document integrity through the system.
+              <strong className="text-foreground">View & Print:</strong> Documents are available for viewing in PDF format only. Printing is allowed through the system's controlled copy protocol to maintain document integrity. Word format downloads for issued documents are prohibited.
             </p>
             <p>
               <strong className="text-foreground">Print Tracking:</strong> When you print a document, a unique control copy number is assigned and logged for audit purposes.

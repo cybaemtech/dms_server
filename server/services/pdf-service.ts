@@ -1,14 +1,21 @@
 import mammoth from "mammoth";
 import puppeteer from "puppeteer";
+import { PDFDocument, rgb } from "pdf-lib";
 import path from "path";
 import fs from "fs/promises";
+import { existsSync, readFileSync, unlinkSync } from "fs";
+import { exec } from "child_process";
+import { promisify } from "util";
 import { type Document } from "@shared/schema";
 import { fileURLToPath } from 'url';
+import AdmZipPackage from 'adm-zip';
+
+const execAsync = promisify(exec);
+const AdmZip = (AdmZipPackage as any).default || AdmZipPackage;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-// If we are in dist, the current directory IS our base, otherwise use project root
-const baseDir = __dirname.includes('dist') ? __dirname : process.cwd();
+const baseDir = process.cwd();
 
 export interface ControlCopyInfo {
   userId: string;
@@ -32,22 +39,368 @@ export class PDFService {
     await fs.mkdir(this.pdfsDir, { recursive: true });
   }
 
+  private sanitizeFilename(name: string): string {
+    return name.replace(/[/\\?%*:|"<>]/g, '-').replace(/\s+/g, '_');
+  }
+
   async convertWordToPDF(
     wordFilePath: string,
     document: Document,
     controlCopyInfo?: ControlCopyInfo
   ): Promise<string> {
     try {
-      console.log(`[PDF] Attempting Puppeteer PDF for: ${document.docNumber}`);
-      return await this.convertWordToPDFWithPuppeteer(wordFilePath, document, controlCopyInfo);
+      console.log(`[PDF] Starting High-Fidelity STAMPING conversion for ${document.docNumber}`);
+
+      // 1. Convert Word to Native PDF first (Perfect Fidelity)
+      const originalPdfPath = await this.convertWordToNativePdfWithLibreOffice(wordFilePath);
+      const originalPdfBytes = await fs.readFile(originalPdfPath);
+
+      // 2. Generate the "Stamps" (Headers/Footers Only)
+      const stampsPdfPath = await this.generateStampsOnlyPdf(document, originalPdfBytes, controlCopyInfo);
+      const stampsPdfBytes = await fs.readFile(stampsPdfPath);
+
+      // 3. Digitally Merge and Scale the two PDFs
+      const mergedPdfPath = await this.mergeAndScalePdfs(originalPdfBytes, stampsPdfBytes, document);
+
+      // 4. Cleanup temp files
+      try {
+        await fs.unlink(originalPdfPath);
+        await fs.unlink(stampsPdfPath);
+      } catch (e) { }
+
+      return mergedPdfPath;
     } catch (err: any) {
-      console.error(`[PDF] Puppeteer failed: ${err.message}. Switching to Professional Fallback...`);
-      return await this.convertWordToPDFAlternative(wordFilePath, document, controlCopyInfo);
+      console.error(`[PDF] CRITICAL HIGH-FIDELITY FAILURE for ${document.docNumber}:`, err);
+      console.warn(`[PDF] High-Fidelity Conversion failed: ${err.message}. Falling back to standard conversion...`);
+      return await this.convertWordToPDFWithPuppeteer(wordFilePath, document, controlCopyInfo);
     }
   }
 
-  private sanitizeFilename(name: string): string {
-    return name.replace(/[/\\?%*:|"<>]/g, '-').replace(/\s+/g, '_');
+  private async convertWordToNativePdfWithLibreOffice(wordFilePath: string): Promise<string> {
+    const libreOfficePath = process.env.LIBREOFFICE_PATH || 'C:\\Program Files\\LibreOffice\\program\\soffice.exe';
+    if (!existsSync(libreOfficePath)) throw new Error('LibreOffice not found');
+
+    // Use a unique folder for concurrency safety
+    const uniqueId = Math.random().toString(36).substring(2, 10);
+    const tempOutputDir = path.join(this.pdfsDir, `stamp_temp_${Date.now()}_${uniqueId}`);
+    await fs.mkdir(tempOutputDir, { recursive: true });
+
+    try {
+      // Copy the source file to a safe, space-free name to avoid shell escaping issues
+      // (filenames with spaces/dots/special chars cause LibreOffice CLI to fail)
+      const safeInputPath = path.join(tempOutputDir, `input.docx`);
+
+      try {
+        // Enforce exact margins by modifying the DOCX's document.xml before LibreOffice renders it.
+        // This guarantees Perfect Margin alignment and content width without vertically squishing!
+        const buffer = await fs.readFile(wordFilePath);
+        const zip = new AdmZip(buffer);
+        const docXmlEntry = zip.getEntry("word/document.xml");
+
+        if (docXmlEntry) {
+          let docXml = docXmlEntry.getData().toString("utf8");
+          // Replace all <w:pgMar> margin attributes to match exactly:
+          // Top ~ 4.5cm (2551 twips)
+          // Bottom ~ 3.0cm (1701 twips)
+          // Left ~ 1.3cm (737 twips)
+          // Right ~ 1.0cm (567 twips)
+          docXml = docXml.replace(/<w:pgMar([^>]*)\/?>/g, (match: string, attrs: string) => {
+            let newAttrs = attrs;
+            newAttrs = newAttrs.replace(/w:top="[0-9]+"/, 'w:top="2155"');
+            newAttrs = newAttrs.replace(/w:bottom="[0-9]+"/, 'w:bottom="1701"');
+            newAttrs = newAttrs.replace(/w:left="[0-9]+"/, 'w:left="737"');
+            newAttrs = newAttrs.replace(/w:right="[0-9]+"/, 'w:right="567"');
+
+            if (!newAttrs.includes('w:top=')) newAttrs += ' w:top="2155"';
+            if (!newAttrs.includes('w:bottom=')) newAttrs += ' w:bottom="1701"';
+            if (!newAttrs.includes('w:left=')) newAttrs += ' w:left="737"';
+            if (!newAttrs.includes('w:right=')) newAttrs += ' w:right="567"';
+
+            // Ensure trailing slash is clean if it got caught in attrs.
+            if (newAttrs.endsWith('/')) newAttrs = newAttrs.slice(0, -1);
+
+            return `<w:pgMar${newAttrs}/>`;
+          });
+
+          // Enforce all tables to be 100% width and remove negative left indents
+          // This prevents native Word tables from overflowing the exact 1.3cm/1cm margin boundaries and getting abruptly cut!
+          docXml = docXml.replace(/<w:tblPr\b[^>]*>([\s\S]*?)<\/w:tblPr>/g, (match: string, inner: string) => {
+            let newInner = inner.replace(/<w:tblW[^>]*\/?>(?:<\/w:tblW>)?/g, '<w:tblW w:w="5000" w:type="pct"/>');
+            newInner = newInner.replace(/<w:tblInd[^>]*\/?>(?:<\/w:tblInd>)?/g, '<w:tblInd w:w="0" w:type="dxa"/>');
+            return match.replace(inner, newInner);
+          });
+
+          zip.updateFile("word/document.xml", Buffer.from(docXml, "utf8"));
+          await fs.writeFile(safeInputPath, zip.toBuffer());
+        } else {
+          await fs.copyFile(wordFilePath, safeInputPath);
+        }
+      } catch (e) {
+        console.warn("[PDF] Failed to inject dynamic margins, falling back to original file:", e);
+        await fs.copyFile(wordFilePath, safeInputPath);
+      }
+
+      const command = `"${libreOfficePath}" --headless --convert-to pdf --outdir "${tempOutputDir}" "${safeInputPath}"`;
+      console.log(`[PDF] Executing: ${command}`);
+      const { stdout, stderr } = await execAsync(command, { timeout: 60 * 1000 });
+
+      if (stderr) console.warn(`[PDF] LibreOffice stderr: ${stderr}`);
+      if (stdout) console.log(`[PDF] LibreOffice stdout: ${stdout}`);
+
+      // LibreOffice names the output after the input file (input.pdf)
+      const pdfPath = path.join(tempOutputDir, 'input.pdf');
+
+      let retries = 0;
+      while (!existsSync(pdfPath) && retries < 20) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        retries++;
+      }
+
+      if (!existsSync(pdfPath)) throw new Error('LibreOffice PDF output not found after conversion');
+
+      const finalPath = path.join(this.pdfsDir, `native_${Date.now()}_${uniqueId}.pdf`);
+      await fs.rename(pdfPath, finalPath);
+      return finalPath;
+    } finally {
+      try {
+        await fs.rm(tempOutputDir, { recursive: true, force: true });
+      } catch (e) { }
+    }
+  }
+
+  private async generateStampsOnlyPdf(document: Document, originalPdfBytes: Uint8Array, controlCopyInfo?: ControlCopyInfo): Promise<string> {
+    const originalPdf = await PDFDocument.load(originalPdfBytes);
+    const pageCount = originalPdf.getPageCount();
+
+    // Create a temporary PDF to embed and extract true rotational dimensions
+    const tempMerged = await PDFDocument.create();
+    const embeddedPages = await tempMerged.embedPages(originalPdf.getPages());
+    const trueWidth = embeddedPages[0].width;
+    const trueHeight = embeddedPages[0].height;
+
+    // Generate Header/Footer Template
+    const headerHtml = this.getHeaderTemplate(document);
+    const footerHtml = this.getFooterTemplate(document, controlCopyInfo);
+
+    let browser;
+    try {
+      browser = await puppeteer.launch({
+        headless: true,
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
+        args: ['--no-sandbox', '--disable-setuid-sandbox']
+      });
+
+      const page = await browser.newPage();
+
+      // Generate exactly the right number of pages using page-break logic
+      let contentHtml = '<div style="font-size: 1px;">';
+      for (let i = 0; i < pageCount; i++) {
+        contentHtml += `<div style="height: 1px; color: transparent; ${i < pageCount - 1 ? 'page-break-after: always;' : ''}">.</div>`;
+      }
+      contentHtml += '</div>';
+
+      await page.setContent(contentHtml, { waitUntil: 'load' });
+
+      const stampsPdfPath = path.join(this.pdfsDir, `stamps_${Date.now()}.pdf`);
+      const pdfBuffer = await page.pdf({
+        width: `${trueWidth / 72}in`,
+        height: `${trueHeight / 72}in`,
+        displayHeaderFooter: true,
+        headerTemplate: headerHtml,
+        footerTemplate: footerHtml,
+        printBackground: true,
+        margin: {
+          top: '3.8cm',
+          bottom: '3cm',
+          left: '1.3cm',
+          right: '1cm'
+        }
+      });
+
+      await fs.writeFile(stampsPdfPath, pdfBuffer);
+      return stampsPdfPath;
+    } finally {
+      if (browser) await browser.close();
+    }
+  }
+
+  private async mergeAndScalePdfs(originalBytes: Uint8Array, stampsBytes: Uint8Array, document: Document): Promise<string> {
+    const originalPdf = await PDFDocument.load(originalBytes);
+    const stampsPdf = await PDFDocument.load(stampsBytes);
+    const mergedPdf = await PDFDocument.create();
+
+    const originalPages = originalPdf.getPages();
+    const stampPages = stampsPdf.getPages();
+
+    // Embed current PDFs into new one
+    const embeddedOriginalPages = await mergedPdf.embedPages(originalPages);
+    const embeddedStampPages = await mergedPdf.embedPages(stampPages);
+
+    for (let i = 0; i < embeddedOriginalPages.length; i++) {
+      const orig = embeddedOriginalPages[i];
+      const stamp = i < embeddedStampPages.length ? embeddedStampPages[i] : embeddedStampPages[embeddedStampPages.length - 1];
+
+      // Create new page matching the TRUE original size (accounts for rotation)
+      const width = orig.width;
+      const height = orig.height;
+      const newPage = mergedPdf.addPage([width, height]);
+
+      // Draw the original page exactly as is (100% scale).
+      // We assume the Word document is formatted with the correct 1.3cm Left and 1cm Right margins,
+      // and sufficient top/bottom margins to accommodate the header and footer stamps.
+      // This ensures 100% true fidelity without squishing text vertically.
+      newPage.drawPage(orig, {
+        x: 0,
+        y: 0,
+        width: width,
+        height: height
+      });
+
+      // 2. Overlay the Header/Footer Stamp (Transparent PDF)
+      // Draws the stamped border/header at 100% scale over the content
+      newPage.drawPage(stamp, { x: 0, y: 0, width, height });
+    }
+
+    const safeDocNumber = this.sanitizeFilename(document.docNumber);
+    const finalName = `${safeDocNumber}_v${document.revisionNo}_final_${Date.now()}.pdf`;
+    const finalPath = path.join(this.pdfsDir, finalName);
+
+    const mergedBytes = await mergedPdf.save();
+    await fs.writeFile(finalPath, mergedBytes);
+    return finalPath;
+  }
+
+  private async detectIsLandscape(wordFilePath: string): Promise<boolean> {
+    try {
+      if (!wordFilePath.endsWith('.docx')) return false;
+      const buffer = await fs.readFile(wordFilePath);
+      const zip = new AdmZip(buffer);
+      const docXml = zip.readAsText("word/document.xml");
+
+      // Look for orientation tag in the main document section properties
+      if (docXml.includes('w:orient="landscape"') || docXml.includes('orient="landscape"')) {
+        return true;
+      }
+      return false;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  private async convertWordToHtmlWithLibreOffice(wordFilePath: string): Promise<string> {
+    if (!existsSync(wordFilePath)) throw new Error("Word file not found");
+
+    const libreOfficePath = process.env.LIBREOFFICE_PATH || 'C:\\Program Files\\LibreOffice\\program\\soffice.exe';
+    if (!existsSync(libreOfficePath)) throw new Error('LibreOffice not found');
+
+    const outputDir = path.join(this.pdfsDir, `temp_${Date.now()}`);
+    await fs.mkdir(outputDir, { recursive: true });
+
+    try {
+      // Convert to HTML with embedded images
+      const command = `"${libreOfficePath}" --headless --convert-to "html:HTML:EmbedImages" --outdir "${outputDir}" "${wordFilePath}"`;
+      console.log(`[PDF] Executing LibreOffice to HTML: ${command}`);
+      await execAsync(command, { timeout: 60000 });
+
+      const tempHtmlName = path.basename(wordFilePath, path.extname(wordFilePath)) + ".html";
+      const tempHtmlPath = path.join(outputDir, tempHtmlName);
+
+      // Wait for file creation
+      let retries = 0;
+      while (!existsSync(tempHtmlPath) && retries < 20) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        retries++;
+      }
+
+      if (!existsSync(tempHtmlPath)) throw new Error('HTML conversion failed');
+
+      let html = await fs.readFile(tempHtmlPath, 'utf-8');
+
+      // Extract only the content inside the <body> tags from LibreOffice HTML
+      const bodyMatch = html.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+      const innerContent = bodyMatch ? bodyMatch[1] : html;
+
+      // Clean up only the tags that break our systemic layout, but KEEP the formatting <style> block
+      // We only remove @page and body margins, keeping the rest of the fidelity
+      const scrubbedContent = innerContent
+        .replace(/@page\s*\{[\s\S]*?\}/gi, '') // Remove Word-specific page margins
+        .replace(/body\s*\{margin:[^;]+;?\}/gi, '') // Remove body margins
+        .replace(/<(meta|title|link|xml)[^>]*>([\s\S]*?)<\/\1>/gi, '');
+
+      // Check if there are styles in the head we should bring into the body
+      const headMatch = html.match(/<head[^>]*>([\s\S]*)<\/head>/i);
+      const headContent = headMatch ? headMatch[1] : '';
+      const styleMatch = headContent.match(/<style[^>]*>([\s\S]*?)<\/style>/gi);
+      const styles = styleMatch ? styleMatch.join('\n') : '';
+
+      // We wrap the content in a div to ensure styles apply correctly
+      return `
+        ${styles}
+        <div class="libre-content">${scrubbedContent}</div>`;
+    } finally {
+      // Cleanup temp dir
+      try {
+        await fs.rm(outputDir, { recursive: true, force: true });
+      } catch (rmErr) {
+        console.warn(`[PDF] Failed to cleanup temp dir: ${outputDir}`);
+      }
+    }
+  }
+
+  private async generatePdfFromHtml(
+    bodyHtml: string,
+    document: Document,
+    isLandscape: boolean = false,
+    controlCopyInfo?: ControlCopyInfo
+  ): Promise<string> {
+    let browser;
+    try {
+      // Dimensions for A4
+      const width = isLandscape ? 841.89 : 595.28;
+      const height = isLandscape ? 595.28 : 841.89;
+
+      // Wrap with systematic theme
+      const fullHtml = this.wrapWithHeavyDutyTheme(document, bodyHtml, isLandscape, width, height, controlCopyInfo);
+
+      browser = await puppeteer.launch({
+        headless: true,
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+      });
+
+      const page = await browser.newPage();
+      await page.setContent(fullHtml, { waitUntil: 'load' });
+
+      // Apply systematic header and footer templates
+      const headerHtml = this.getHeaderTemplate(document);
+      const footerHtml = this.getFooterTemplate(document, controlCopyInfo);
+
+      const safeDocNumber = this.sanitizeFilename(document.docNumber);
+      const pdfFileName = `${safeDocNumber}_v${document.revisionNo}_issued_${Date.now()}.pdf`;
+      const pdfPath = path.join(this.pdfsDir, pdfFileName);
+
+      const pdfBuffer = await page.pdf({
+        printBackground: true,
+        preferCSSPageSize: false,
+        displayHeaderFooter: true,
+        headerTemplate: headerHtml,
+        footerTemplate: footerHtml,
+        width: `${width / 72}in`,
+        height: `${height / 72}in`,
+        landscape: isLandscape,
+        margin: {
+          top: '3.8cm',
+          bottom: '3cm',
+          left: '1.3cm',
+          right: '1cm'
+        },
+      });
+
+      await fs.writeFile(pdfPath, pdfBuffer);
+      return pdfPath;
+    } finally {
+      if (browser) await browser.close();
+    }
   }
 
   private async convertWordToPDFWithPuppeteer(
@@ -55,161 +408,66 @@ export class PDFService {
     document: Document,
     controlCopyInfo?: ControlCopyInfo
   ): Promise<string> {
-    let browser;
+    // Original mammoth-based fallback (kept for robustness)
     try {
-      await fs.access(wordFilePath);
+      const isLandscape = await this.detectIsLandscape(wordFilePath);
       const wordBuffer = await fs.readFile(wordFilePath);
-
-      const options = {
-        styleMap: [
-          "p[style-name='Header'] => h1:fresh",
-          "p[style-name='Heading 1'] => h1:fresh",
-          "p[style-name='Heading 2'] => h2:fresh",
-          "p[style-name='Heading 3'] => h3:fresh",
-          "p[style-name='List Paragraph'] => p.list-paragraph:fresh",
-          "p[style-name='Normal'] => p:fresh",
-          "r[style-name='Strong'] => strong:fresh",
-          "r[style-name='Emphasis'] => em:fresh",
-          "table => table.document-table:fresh",
-          "b => strong",
-          "i => em",
-          "u => span.underline"
-        ],
-        includeDefaultStyleMap: true,
-        convertImage: mammoth.images.imgElement(function (image: any) {
-          return image.read("base64").then(function (imageBuffer: string) {
-            return { src: "data:" + image.contentType + ";base64," + imageBuffer };
-          });
-        })
-      };
-
-      const result = await mammoth.convertToHtml({ buffer: wordBuffer }, options);
+      const result = await mammoth.convertToHtml({ buffer: wordBuffer });
       const htmlContent = result.value || '';
-      const fullHtml = this.wrapWithHeavyDutyTheme(document, htmlContent, controlCopyInfo);
-
-      browser = await puppeteer.launch({
-        headless: true,
-        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-gpu',
-          '--font-render-hinting=none'
-        ]
-      });
-
-      const page = await browser.newPage();
-      await page.setContent(fullHtml, { waitUntil: 'networkidle0', timeout: 30000 });
-
-      // Extract real page count after content is rendered
-      const pageCount = await page.evaluate(() => {
-        // This is a rough estimate or we can use the footer/header injection result
-        // For puppeteer, the actual page count is determined during pdf generation
-        return 0; // Placeholder, will update document after PDF generation
-      });
-
-      const safeDocNumber = this.sanitizeFilename(document.docNumber);
-      const pdfFileName = `${safeDocNumber}_v${document.revisionNo}_final_${Date.now()}.pdf`;
-      const pdfPath = path.join(this.pdfsDir, pdfFileName);
-
-      const headerHtml = this.getHeaderTemplate(document);
-      const footerHtml = this.getFooterTemplate(document, controlCopyInfo);
-
-      const pdfBuffer = await page.pdf({
-        format: 'A4',
-        printBackground: true,
-        margin: { top: '160px', bottom: '120px', left: '45px', right: '45px' },
-        displayHeaderFooter: true,
-        headerTemplate: headerHtml,
-        footerTemplate: footerHtml,
-      });
-
-      await fs.writeFile(pdfPath, pdfBuffer);
-
-      // Now we can get the actual page count from the PDF buffer if needed,
-      // but Puppeteer doesn't easily expose it here.
-      // However, we can use a library or just accept that it's dynamic.
-
-      return pdfPath;
-    } finally {
-      if (browser) await browser.close();
+      return await this.generatePdfFromHtml(htmlContent, document, isLandscape, controlCopyInfo);
+    } catch (err) {
+      console.error("[PDF] Critical Fallback Failure:", err);
+      throw err;
     }
   }
 
-  private wrapWithHeavyDutyTheme(document: Document, body: string, controlCopyInfo?: ControlCopyInfo): string {
-
+  private wrapWithHeavyDutyTheme(document: Document, body: string, isLandscape: boolean, width: number, height: number, controlCopyInfo?: ControlCopyInfo): string {
     return `
 <!DOCTYPE html>
 <html>
 <head>
   <style>
-    @page { 
-      size: A4 portrait; 
-      margin: 160px 45px 120px 45px; 
-    }
-    body { 
-      font-family: 'Segoe UI', Calibri, Arial, sans-serif; 
+    /* RESET CSS to match Word behavior */
+    * { box-sizing: border-box; }
+    html, body { 
       margin: 0; 
       padding: 0; 
-      color: black; 
-      background: white;
+      width: 100%; 
       -webkit-print-color-adjust: exact;
-      print-color-adjust: exact;
+    }
+    body {
+      font-family: Calibri, 'Segoe UI', Arial, sans-serif;
+      font-size: 11pt;
+      line-height: normal;
+      color: #000;
+    }
+    h1, h2, h3, h4, h5, h6 { margin: 0; padding: 0.5em 0; font-size: inherit; font-weight: bold; }
+    p { margin: 0; padding: 0; }
+    
+    .document-content { 
+      padding: 0; 
+      background: white; 
+      width: 100%; 
     }
     
-    /* Content body - preserve Word formatting */
-    .content-body { 
-      font-size: 11pt; 
-      line-height: 1.6; 
-      color: black; 
-      padding-top: 5px;
-      width: 100%;
+    /* FORCE relative positioning so Word content doesn't escape our margins */
+    .libre-content, .libre-content * { 
+      position: relative !important; 
+      top: auto !important;
+      left: auto !important;
+      margin-top: auto;
     }
-    .content-body h1 { font-size: 14pt; margin: 15px 0 10px 0; font-weight: bold; }
-    .content-body h2 { font-size: 13pt; margin: 12px 0 8px 0; font-weight: bold; }
-    .content-body h3 { font-size: 12pt; margin: 10px 0 6px 0; font-weight: bold; }
-    .content-body p { margin: 4px 0; text-align: justify; }
-    .content-body p:empty { margin: 8px 0; }
     
-    /* Preserve list formatting */
-    .content-body ol, .content-body ul { margin: 6px 0 6px 20px; padding-left: 15px; }
-    .content-body li { margin: 3px 0; line-height: 1.5; }
-    .content-body p.list-paragraph { margin-left: 20px; }
-    
-    /* Preserve inline formatting */
-    .content-body strong, .content-body b { font-weight: bold; }
-    .content-body em, .content-body i { font-style: italic; }
-    .content-body span.underline { text-decoration: underline; }
-    .content-body sub { vertical-align: sub; font-size: 0.8em; }
-    .content-body sup { vertical-align: super; font-size: 0.8em; }
-    
-    /* Preserve table formatting from Word */
-    .document-table { width: 100%; border-collapse: collapse; margin: 10px 0; page-break-inside: auto; }
-    .document-table tr { page-break-inside: avoid; page-break-after: auto; }
-    .document-table td, .document-table th { 
-      border: 1pt solid black; 
-      padding: 5px 8px; 
-      font-size: 10pt; 
-      line-height: 1.4;
-      vertical-align: top;
-      text-align: left;
-    }
-    .document-table th { font-weight: bold; background-color: #f2f2f2; }
-    
-    /* Preserve images */
-    .content-body img { max-width: 100%; height: auto; margin: 8px 0; }
-    
-    /* Preserve any inline styles from Word */
-    .content-body [style] { /* allow inline styles to pass through */ }
+    .libre-content { padding-top: 5px; }
+    .libre-content table { border-collapse: collapse; margin: 10pt 0; page-break-inside: auto; }
+    .libre-content tr { page-break-inside: avoid; page-break-after: auto; }
+    .libre-content td { padding: 4px; vertical-align: top; }
+    .libre-content img { max-width: 100%; height: auto; display: block; }
   </style>
 </head>
 <body>
-  <div class="content-body">
-    <div class="document-content">
-      ${body}
-    </div>
-    ${document.content ? `<div style="margin-top: 15px;">${document.content}</div>` : ''}
+  <div class="document-content">
+    ${body}
   </div>
 </body>
 </html>`;
@@ -223,304 +481,113 @@ export class PDFService {
   }
 
   private getHeaderTemplate(document: Document): string {
-    const deptName = (document as any).departmentNames?.[0] || 'Management Representative';
-    const location = (document as any).location || '';
+    const deptName = (document as any).creatorDepartmentName || 'MR';
+    const locationValue = document.location || 'Unit 1';
     const revNo = document.revisionNo !== undefined ? String(document.revisionNo).padStart(2, '0') : '00';
-    const dateOfIssue = this.formatDate(document.originalDateOfIssue || document.dateOfIssue);
-    const dateOfRev = this.formatDate(document.dateOfRev || (document.revisionNo !== undefined && document.revisionNo > 0 ? document.dateOfIssue : null));
+    const dateOfIssue = this.formatDate(document.dateOfIssue);
+    const dateOfRev = this.formatDate(document.dateOfRev || (document.revisionNo > 0 ? document.dateOfIssue : null));
     const dueDate = this.formatDate(document.reviewDueDate);
 
     return `
       <style>
-        .header-container {
-          margin: 0 45px;
-          font-family: 'Segoe UI', Calibri, Arial, sans-serif;
-          width: calc(100% - 90px);
+        #header { padding: 0 !important; margin: 0 !important; }
+        .header-container { 
+          margin: 0 !important;
+          margin-left: 1.3cm !important;
+          margin-right: 1cm !important;
+          width: calc(100% - 2.3cm) !important;
+          padding: 0.5cm 0 0.2cm 0 !important;
+          font-family: 'Segoe UI', Calibri, Arial, sans-serif !important; 
+          box-sizing: border-box;
+          -webkit-print-color-adjust: exact;
         }
-        .header-table {
-          width: 100%;
-          border-collapse: collapse;
-          border: 1.2pt solid #000;
+        .header-table { 
+          width: 100%; 
+          border-collapse: collapse; 
+          border: 1.2pt solid #000; 
+          table-layout: fixed; 
         }
-        .header-table td {
-          border: 1pt solid #000;
-          padding: 4px 5px;
-          vertical-align: middle;
-          font-size: 7.2pt;
-          line-height: 1.2;
-          overflow: hidden;
+        .header-table td { 
+          border: 0.7pt solid #000; 
+          padding: 3px 6px; 
+          font-size: 8.5pt; 
+          line-height: normal; 
+          color: #000; 
+          vertical-align: top; 
+          word-wrap: break-word;
         }
-        .company-name {
-          text-align: center;
-          font-weight: bold;
-          font-size: 10pt;
-          text-transform: uppercase;
-          padding: 7px 5px !important;
-          border-bottom: 1.2pt solid #000 !important;
-          letter-spacing: 0.2px;
+        .company-name { 
+          text-align: center; 
+          font-weight: bold; 
+          font-size: 10.5pt; 
+          text-transform: uppercase; 
+          border-bottom: 1.2pt solid #000 !important; 
+          padding: 5px !important; 
+          vertical-align: middle !important;
         }
-        .label { font-weight: bold; color: #000; }
-        .value { font-weight: normal; color: #000; }
-        .nested-table { width: 100%; border: none !important; border-collapse: collapse; margin: 0; padding: 0; }
-        .nested-table td { border: none !important; padding: 0 !important; font-size: 7.2pt !important; line-height: 1.4 !important; }
+        .label { font-weight: bold; }
       </style>
       <div class="header-container">
         <table class="header-table">
-          <colgroup>
-            <col style="width: 18%;">
-            <col style="width: 20%;">
-            <col style="width: 12%;">
-            <col style="width: 35%;">
-            <col style="width: 15%;">
-          </colgroup>
+          <tr><td colspan="5" class="company-name">NEELIKON FOOD DYES AND CHEMICALS LIMITED</td></tr>
           <tr>
-            <td colspan="5" class="company-name">NEELIKON FOOD DYES AND CHEMICALS LIMITED</td>
-          </tr>
-          <tr>
-            <td style="white-space: normal;"><span class="label">Location:</span> <span class="value">${location}</span></td>
-            <td><span class="label">Date of Issue:</span> <span class="value">${dateOfIssue}</span></td>
-            <td><span class="label">Rev. No.:</span> <span class="value">${revNo}</span></td>
-            <td style="white-space: normal; padding: 2px 5px;">
-              <table class="nested-table">
-                <tr>
-                  <td style="width: 58%;"><span class="label">Date of Rev.</span></td>
-                  <td><span class="label">:</span> <span class="value">${dateOfRev}</span></td>
-                </tr>
-                <tr>
-                  <td><span class="label">Due Date of Rev.</span></td>
-                  <td><span class="label">:</span> <span class="value">${dueDate}</span></td>
-                </tr>
-              </table>
+            <td style="width: 20%;"><span class="label">Location:</span> ${locationValue}</td>
+            <td style="width: 23%;"><span class="label">Date of Issue:</span> ${dateOfIssue}</td>
+            <td style="width: 12%;"><span class="label">Rev. No.:</span> ${revNo}</td>
+            <td style="width: 30%;">
+              <span class="label">Date of Rev. :</span> ${dateOfRev}<br>
+              <span class="label">Due Date:</span> ${dueDate}
             </td>
-            <td><span class="label">Page</span> <span class="pageNumber"></span> <span class="label">of</span> <span class="totalPages"></span></td>
+            <td style="width: 15%;"><span class="label">Page</span> <span class="pageNumber"></span> of <span class="totalPages"></span></td>
           </tr>
           <tr>
-            <td style="white-space: normal;"><span class="label">Dept.:</span> <span class="value">${deptName}</span></td>
-            <td colspan="3" style="white-space: normal;"><span class="label">Title:</span> <span class="value">${document.docName}</span></td>
-            <td style="white-space: normal;"><span class="label">Doc. No.:</span> <span class="value">${document.docNumber}</span></td>
+            <td style="width: 20%;"><span class="label">Dept.:</span> ${deptName}</td>
+            <td colspan="3" style="width: 65%;"><span class="label">Title :</span> ${document.docName}</td>
+            <td style="width: 15%;"><span class="label">Doc. No.:</span> ${document.docNumber}</td>
           </tr>
         </table>
-      </div>
-    `;
+      </div>`;
   }
+
   private getFooterTemplate(document: Document, controlCopyInfo?: ControlCopyInfo): string {
-    const preparer = (document as any).preparerName || (document as any).creatorData?.fullName || 'Unknown';
-    const approver = (document as any).approverName || (document as any).approverData?.fullName || 'Pending';
-    const issuer = (document as any).issuerName || (document as any).issuerData?.fullName || 'Pending';
+    const preparer = (document as any).preparerName || 'Unknown';
+    const approver = (document as any).approverName || 'Pending';
+    const issuer = (document as any).issuerName || 'Pending';
+    const status = (document.status || "PENDING").toUpperCase();
 
-    const preparerId = document.preparedBy || '-';
-    const approverId = document.approvedBy || '-';
-    const issuerId = document.issuedBy || '-';
-
-    const status = document.status ? document.status.toUpperCase() : 'PENDING';
-
-    let statusContent = `<span class="footer-label">Status</span><span class="footer-value">${status}</span>`;
+    let statusContent = `<span class="label">Status:</span> ${status}`;
     if (controlCopyInfo) {
-      statusContent = `<span class="footer-label">Status</span><span class="footer-value">Controlled Copy</span><br><span class="footer-value" style="font-size: 6.5pt;">(Printed by ${controlCopyInfo.userFullName} and ${controlCopyInfo.userId}) / ${controlCopyInfo.date}</span>`;
+      statusContent = `<span class="label">Controlled Copy</span><br><span style="font-size: 7pt;">(Printed by ${controlCopyInfo.userFullName} on ${controlCopyInfo.date})</span>`;
     }
 
     return `
       <style>
+        #footer { padding: 0 !important; margin: 0 !important; }
         .footer-container { 
-          margin: 0 45px; 
-          font-family: 'Segoe UI', Arial, sans-serif; 
-          width: calc(100% - 90px);
-          font-size: 7.5pt;
+          margin: 0 !important;
+          margin-left: 1.3cm !important;
+          margin-right: 1cm !important;
+          width: calc(100% - 2.3cm) !important;
+          padding: 0.5cm 0 1cm 0 !important;
+          font-family: 'Segoe UI', Arial, sans-serif !important; 
+          box-sizing: border-box;
+          font-size: 8.5pt;
+          -webkit-print-color-adjust: exact;
         }
-        .footer-table { 
-          width: 100%; 
-          border-collapse: collapse; 
-          table-layout: fixed; 
-          border: 1.5pt solid #000; 
-        }
-        .footer-table td { 
-          font-size: 7.5pt; 
-          padding: 3px 5px; 
-          vertical-align: top; 
-          border: 1pt solid #000; 
-          line-height: 1.3; 
-        }
-        .footer-label { font-weight: bold; display: block; margin-bottom: 1px; }
-        .footer-value { font-weight: normal; }
+        .footer-table { width: 100%; border-collapse: collapse; border: 2px solid #000; table-layout: fixed; }
+        .footer-table td { padding: 5px 10px; border: 1px solid #000; vertical-align: top; color: #000; }
+        .label { font-weight: bold; }
       </style>
       <div class="footer-container">
         <table class="footer-table">
-          <colgroup>
-            <col style="width: 20%;">
-            <col style="width: 20%;">
-            <col style="width: 20%;">
-            <col style="width: 40%;">
-          </colgroup>
           <tr>
-            <td>
-              <span class="footer-label">Prepared By:</span>
-              <span class="footer-value">(${preparer} and ${preparerId})</span>
-            </td>
-            <td>
-              <span class="footer-label">Approved By:</span>
-              <span class="footer-value">${approver === 'Pending' || !document.approvedBy ? 'Pending' : `(${approver} and ${approverId})`}</span>
-            </td>
-            <td>
-              <span class="footer-label">Issued By:</span>
-              <span class="footer-value">${issuer === 'Pending' || !document.issuedBy ? 'Pending' : `(${issuer} and ${issuerId})`}</span>
-            </td>
-            <td style="text-align: center;">${statusContent}</td>
+            <td style="width: 20%;"><span class="label">Prepared By:</span> ${preparer}</td>
+            <td style="width: 20%;"><span class="label">Approved By:</span> ${approver}</td>
+            <td style="width: 20%;"><span class="label">Issued By:</span> ${issuer}</td>
+            <td style="width: 40%; text-align: center; vertical-align: middle;">${statusContent}</td>
           </tr>
         </table>
-      </div>
-    `;
-  }
-
-  private async convertWordToPDFAlternative(
-    wordFilePath: string,
-    document: Document,
-    controlCopyInfo?: ControlCopyInfo
-  ): Promise<string> {
-    try {
-      const { PDFDocument, StandardFonts, rgb } = await import('pdf-lib');
-      const wordBuffer = await fs.readFile(wordFilePath);
-      const textResult = await mammoth.extractRawText({ buffer: wordBuffer });
-      const content = textResult.value || '';
-
-      const pdfDoc = await PDFDocument.create();
-      const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-      const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-
-      let page = pdfDoc.addPage([595.28, 841.89]);
-      const { width, height } = page.getSize();
-
-      const companyHeader = (document.headerInfo || "").toUpperCase();
-
-      const drawHeader = (p: any, pageNum: number, totalPgs: number) => {
-        const companyHeader = "NEELIKON FOOD DYES AND CHEMICALS LIMITED";
-        const L = 40;
-        const R = width - 40;
-        const W = R - L;
-
-        // Vertical Line positions based on col widths: 18, 20, 12, 35, 15
-        const col0 = L;
-        const col1 = L + W * 0.18;
-        const col2 = L + W * 0.38;
-        const col3 = L + W * 0.50;
-        const col4 = L + W * 0.85;
-
-        const row0Top = height - 20;
-        const row0Bot = height - 40;
-        const row1Top = row0Bot;
-        const row1Bot = height - 75;
-        const row2Top = row1Bot;
-        const row2Bot = height - 95;
-
-        const borderColor = rgb(0, 0, 0);
-        const bw = 1;
-
-        // Outer box
-        p.drawRectangle({ x: L, y: row2Bot, width: W, height: row0Top - row2Bot, borderColor, borderWidth: 1.2 });
-
-        // Row lines
-        p.drawLine({ start: { x: L, y: row0Bot }, end: { x: R, y: row0Bot }, thickness: 1.2, color: borderColor });
-        p.drawLine({ start: { x: L, y: row1Bot }, end: { x: R, y: row1Bot }, thickness: 1.2, color: borderColor });
-
-        // Row 1 vertical lines (5 cells)
-        [col1, col2, col3, col4].forEach(cx => {
-          p.drawLine({ start: { x: cx, y: row1Top }, end: { x: cx, y: row1Bot }, thickness: bw, color: borderColor });
-        });
-
-        // Row 2 vertical lines (3 cells aligned to row 1)
-        [col1, col4].forEach(cx => {
-          p.drawLine({ start: { x: cx, y: row2Top }, end: { x: cx, y: row2Bot }, thickness: bw, color: borderColor });
-        });
-
-        // Company header
-        const compW = boldFont.widthOfTextAtSize(companyHeader, 10);
-        p.drawText(companyHeader, { x: L + (W - compW) / 2, y: row0Bot + 7, size: 10, font: boldFont });
-
-        const fs1 = 7.2;
-        const location = (document as any).location || '';
-        const dateOfIssue = this.formatDate(document.originalDateOfIssue || document.dateOfIssue);
-        const revNo = document.revisionNo !== undefined ? String(document.revisionNo).padStart(2, '0') : '00';
-        const dateOfRev = this.formatDate(document.dateOfRev || (document.revisionNo !== undefined && document.revisionNo > 0 ? document.dateOfIssue : null));
-        const dueDate = this.formatDate(document.reviewDueDate);
-
-        // Row 1 content
-        const metaY = row1Bot + 15;
-        const metaY2 = row1Bot + 5;
-
-        p.drawText('Location:', { x: col0 + 4, y: metaY, font: boldFont, size: fs1 });
-        p.drawText(` ${location}`, { x: col0 + 4 + boldFont.widthOfTextAtSize('Location:', fs1), y: metaY, font, size: fs1 });
-
-        p.drawText('Date of Issue:', { x: col1 + 4, y: metaY, font: boldFont, size: fs1 });
-        p.drawText(` ${dateOfIssue}`, { x: col1 + 4 + boldFont.widthOfTextAtSize('Date of Issue:', fs1), y: metaY, font, size: fs1 });
-
-        p.drawText('Rev. No.:', { x: col2 + 4, y: metaY, font: boldFont, size: fs1 });
-        p.drawText(` ${revNo}`, { x: col2 + 4 + boldFont.widthOfTextAtSize('Rev. No.:', fs1), y: metaY, font, size: fs1 });
-
-        // Rev cell
-        const col3W = col4 - col3;
-        p.drawText('Date of Rev.', { x: col3 + 4, y: metaY, font: boldFont, size: fs1 });
-        p.drawText(':', { x: col3 + col3W * 0.58, y: metaY, font: boldFont, size: fs1 });
-        p.drawText(` ${dateOfRev}`, { x: col3 + col3W * 0.58 + boldFont.widthOfTextAtSize(':', fs1), y: metaY, font, size: fs1 });
-
-        p.drawText('Due Date of Rev.', { x: col3 + 4, y: metaY2, font: boldFont, size: fs1 });
-        p.drawText(':', { x: col3 + col3W * 0.58, y: metaY2, font: boldFont, size: fs1 });
-        p.drawText(` ${dueDate}`, { x: col3 + col3W * 0.58 + boldFont.widthOfTextAtSize(':', fs1), y: metaY2, font, size: fs1 });
-
-        p.drawText(`Page ${pageNum} of ${totalPgs}`, { x: col4 + 4, y: metaY, font: boldFont, size: fs1 });
-
-        // Row 2 content
-        const deptName = (document as any).departmentNames?.[0] || 'Management Representative';
-        const deptY = row2Bot + 6;
-
-        p.drawText('Dept.:', { x: col0 + 4, y: deptY, font: boldFont, size: fs1 });
-        p.drawText(` ${deptName.substring(0, 20)}`, { x: col0 + 4 + boldFont.widthOfTextAtSize('Dept.:', fs1), y: deptY, font, size: fs1 });
-
-        p.drawText('Title:', { x: col1 + 4, y: deptY, font: boldFont, size: fs1 });
-        p.drawText(` ${document.docName.substring(0, 50)}`, { x: col1 + 4 + boldFont.widthOfTextAtSize('Title:', fs1), y: deptY, font, size: fs1 });
-
-        p.drawText('Doc. No.:', { x: col4 + 4, y: deptY, font: boldFont, size: fs1 });
-        p.drawText(` ${document.docNumber}`, { x: col4 + 4 + boldFont.widthOfTextAtSize('Doc. No.:', fs1), y: deptY, font, size: fs1 });
-      };
-      drawHeader(page, 1, 1);
-      let y = height - 170;
-      const lines = content.split('\n').filter(l => l.trim().length > 0);
-
-      // First pass: calculate total pages
-      let tempY = y;
-      let totalPages = 1;
-      for (const line of lines) {
-        if (tempY < 150) {
-          totalPages++;
-          tempY = height - 170;
-        }
-        tempY -= 15;
-      }
-
-      // Re-draw first page header with correct total
-      drawHeader(page, 1, totalPages);
-      let currentPage = 1;
-
-      for (const line of lines) {
-        if (y < 150) {
-          page = pdfDoc.addPage([595.28, 841.89]);
-          currentPage++;
-          drawHeader(page, currentPage, totalPages);
-          y = height - 170;
-        }
-        // Clean characters for PDF-lib compatibility
-        const cleanLine = line.substring(0, 95).replace(/[^\x20-\x7E]/g, " ");
-        page.drawText(cleanLine, { x: 50, y, size: 10, font });
-        y -= 15;
-      }
-      const safeDocNumber = this.sanitizeFilename(document.docNumber);
-      const pdfFileName = `${safeDocNumber}_v${document.revisionNo}_fallback_${Date.now()}.pdf`;
-      const pdfPath = path.join(this.pdfsDir, pdfFileName);
-      const pdfBytes = await pdfDoc.save();
-      await fs.writeFile(pdfPath, pdfBytes);
-      return pdfPath;
-    } catch (fallbackErr: any) {
-      console.error(`[PDF] Fallback engine also failed: ${fallbackErr.message}`);
-      throw new Error(`PDF generation failed completely: ${fallbackErr.message}`);
-    }
+      </div>`;
   }
 
   async saveUploadedFile(fileBuffer: Buffer, originalName: string, documentId: string): Promise<string> {
@@ -531,8 +598,37 @@ export class PDFService {
     return `uploads/${fileName}`;
   }
 
-  async extractHeaderFooterFromWord(fileBuffer: Buffer): Promise<{ headerInfo: string, footerInfo: string }> {
-    return { headerInfo: '', footerInfo: '' };
+  async extractHeaderFooterFromWord(buffer: Buffer): Promise<{ headerInfo: string; footerInfo: string }> {
+    try {
+      const zip = new AdmZip(buffer);
+      const entries = zip.getEntries();
+
+      let headerInfo = "";
+      let footerInfo = "";
+
+      // Look for header/footer XML files in the Word document zip
+      for (const entry of entries) {
+        if (entry.entryName.startsWith("word/header")) {
+          const content = zip.readAsText(entry.entryName);
+          // Very basic text extraction from XML tags
+          const text = content.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+          if (text) headerInfo += (headerInfo ? " " : "") + text;
+        } else if (entry.entryName.startsWith("word/footer")) {
+          const content = zip.readAsText(entry.entryName);
+          const text = content.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+          if (text) footerInfo += (footerInfo ? " " : "") + text;
+        }
+      }
+
+      return {
+        headerInfo: headerInfo.slice(0, 1000), // Cap length for database storage
+        footerInfo: footerInfo.slice(0, 1000)
+      };
+    } catch (error) {
+      console.error("Error extracting header/footer from Word:", error);
+      return { headerInfo: "", footerInfo: "" };
+    }
   }
 }
+
 export const pdfService = new PDFService();

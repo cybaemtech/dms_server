@@ -13,6 +13,8 @@ interface DocumentViewDialogProps {
   open: boolean;
   onClose: () => void;
   onDownload?: (doc: Document) => void;
+  onViewWord?: (doc: Document) => void;
+  onViewPdf?: (doc: Document) => void;
 }
 
 interface DocumentDetails {
@@ -47,6 +49,8 @@ export default function DocumentViewDialog({
   open,
   onClose,
   onDownload,
+  onViewWord,
+  onViewPdf,
 }: DocumentViewDialogProps) {
   const { data: docDetails, isLoading } = useQuery<DocumentDetails>({
     queryKey: ["/api/documents", document?.id],
@@ -137,17 +141,42 @@ export default function DocumentViewDialog({
           <div className="space-y-6 py-4">
             <div className="flex items-center justify-between">
               <StatusBadge status={document.status} />
-              {onDownload && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => onDownload(document)}
-                  data-testid="button-download-doc"
-                >
-                  <Download className="w-4 h-4 mr-2" />
-                  Download as Word
-                </Button>
-              )}
+              <div className="flex gap-2">
+                {onViewPdf && (document.status?.toLowerCase() === "issued" || document.status?.toLowerCase() === "obsolete") && (
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={() => onViewPdf(document)}
+                    data-testid="button-view-pdf"
+                    className="bg-red-600 hover:bg-red-700 text-white"
+                  >
+                    <FileText className="w-4 h-4 mr-2" />
+                    View PDF
+                  </Button>
+                )}
+                {onViewWord && document.status?.toLowerCase() !== "issued" && document.status?.toLowerCase() !== "obsolete" && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => onViewWord(document)}
+                    data-testid="button-view-word-content"
+                  >
+                    <FileText className="w-4 h-4 mr-2" />
+                    View Word Content
+                  </Button>
+                )}
+                {onDownload && document.status?.toLowerCase() !== "issued" && document.status?.toLowerCase() !== "obsolete" && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => onDownload(document)}
+                    data-testid="button-download-doc"
+                  >
+                    <Download className="w-4 h-4 mr-2" />
+                    Download as Word
+                  </Button>
+                )}
+              </div>
             </div>
 
             <Card className="p-6">
@@ -164,10 +193,12 @@ export default function DocumentViewDialog({
                 <div className="space-y-1">
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Calendar className="w-4 h-4" />
-                    Date of Issue
+                    Revision Date
                   </div>
                   <p className="text-sm font-medium">
-                    {document.dateOfIssue ? new Date(document.dateOfIssue).toLocaleDateString('en-GB') : 'N/A'}
+                    {docDetails?.dateOfRev && docDetails.dateOfRev !== "0" && docDetails.dateOfRev !== "-"
+                      ? new Date(docDetails.dateOfRev).toLocaleDateString('en-GB')
+                      : (document.dateOfIssue ? new Date(document.dateOfIssue).toLocaleDateString('en-GB') : 'N/A')}
                   </p>
                 </div>
 
@@ -217,17 +248,7 @@ export default function DocumentViewDialog({
                   </div>
                 )}
 
-                {docDetails?.dateOfRev && (
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Calendar className="w-4 h-4" />
-                      Date of Revision
-                    </div>
-                    <p className="text-sm font-medium">
-                      {new Date(docDetails.dateOfRev).toLocaleDateString('en-GB')}
-                    </p>
-                  </div>
-                )}
+
 
                 {docDetails?.originalDateOfIssue && (
                   <div className="space-y-1">
@@ -263,15 +284,6 @@ export default function DocumentViewDialog({
                   </div>
                 )}
 
-                {docDetails?.issueNo && (
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Hash className="w-4 h-4" />
-                      Issue Number
-                    </div>
-                    <p className="text-sm font-medium">{docDetails.issueNo}</p>
-                  </div>
-                )}
               </div>
 
               {docDetails?.reasonForRevision && (

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Switch, Route, useLocation } from "wouter";
+import { Switch, Route, useLocation, Redirect } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -39,9 +39,11 @@ function Router() {
   const [userName, setUserName] = useState<string>(session?.userName || "");
   const [userFullName, setUserFullName] = useState<string>(session?.userFullName || "");
   const [userLocationState, setUserLocationState] = useState<string>(session?.location || "");
-  const [userId, setUserId] = useState<string>(session?.userId || "");
+  const [userId, setUserId] = useState<string>(session?.userId || session?.id || "");
   const [userDepartmentId, setUserDepartmentId] = useState<string | null>(session?.departmentId || null);
   const [userDepartmentName, setUserDepartmentName] = useState<string | null>(session?.departmentName || null);
+  const [userDepartmentCode, setUserDepartmentCode] = useState<string | null>(session?.departmentCode || null);
+  const [userMasterCopyAccess, setUserMasterCopyAccess] = useState<boolean>(session?.masterCopyAccess || false);
 
   // Update logic to ensure location is always synced
   useEffect(() => {
@@ -130,16 +132,7 @@ function Router() {
 
       const role = roleMap[user.role] || "Recipient";
 
-      setUserRole(role);
-      setUserName(user.username);
-      setUserFullName(user.fullName);
-      setUserLocationState(user.location || "");
-      setUserId(user.id);
-      setUserDepartmentId(user.departmentId || null);
-      setUserDepartmentName(user.departmentName || null);
-      setIsAuthenticated(true);
-
-      // Save session to localStorage
+      // 1. Save session to localStorage FIRST for persistence
       localStorage.setItem('userSession', JSON.stringify({
         userRole: role,
         userName: user.username,
@@ -147,27 +140,44 @@ function Router() {
         userId: user.id,
         location: user.location,
         departmentId: user.departmentId || null,
-        departmentName: user.departmentName || null
+        departmentName: user.departmentName || null,
+        departmentCode: user.departmentCode || null,
+        masterCopyAccess: user.masterCopyAccess || false
       }));
 
+      // 2. Update all state variables
+      setUserRole(role);
+      setUserName(user.username);
+      setUserFullName(user.fullName);
+      setUserLocationState(user.location || "");
+      setUserId(user.id);
+      setUserDepartmentId(user.departmentId || null);
+      setUserDepartmentName(user.departmentName || null);
+      setUserDepartmentCode(user.departmentCode || null);
+      setUserMasterCopyAccess(user.masterCopyAccess || false);
+      setIsAuthenticated(true);
+
       // Navigate to appropriate dashboard
-      switch (role) {
-        case "Creator":
-          setLocation("/creator");
-          break;
-        case "Approver":
-          setLocation("/approver");
-          break;
-        case "Issuer":
-          setLocation("/issuer");
-          break;
-        case "Recipient":
-          setLocation("/recipient");
-          break;
-        case "Admin":
-          setLocation("/admin");
-          break;
-      }
+      // Added a slight delay for navigation to allow UI state to settle and transitions to play
+      setTimeout(() => {
+        switch (role) {
+          case "Creator":
+            setLocation("/creator");
+            break;
+          case "Approver":
+            setLocation("/approver");
+            break;
+          case "Issuer":
+            setLocation("/issuer");
+            break;
+          case "Recipient":
+            setLocation("/recipient");
+            break;
+          case "Admin":
+            setLocation("/admin");
+            break;
+        }
+      }, 500);
 
       // Show welcome notification
       addNotification({
@@ -192,6 +202,10 @@ function Router() {
     setUserName("");
     setUserLocationState("");
     setUserId("");
+    setUserDepartmentId(null);
+    setUserDepartmentName(null);
+    setUserDepartmentCode(null);
+    setUserMasterCopyAccess(false);
     setDocuments([]);
     setActivities([]);
 
@@ -362,43 +376,61 @@ function Router() {
     <>
       <Switch>
         <Route path="/">
-          <LoginPage onLogin={handleLogin} />
+          {isAuthenticated ? (
+            <Redirect to={`/${userRole?.toLowerCase()}`} />
+          ) : (
+            <LoginPage onLogin={handleLogin} />
+          )}
         </Route>
         <Route path="/creator">
-          <CreatorDashboardWithAPI
-            onCreateDocument={handleCreateDocument}
-            onLogout={handleLogout}
-            userId={userId}
-            userName={userName}
-            departmentId={userDepartmentId}
-            departmentName={userDepartmentName}
-          />
+          {!isAuthenticated ? <Redirect to="/" /> : (
+            <CreatorDashboardWithAPI
+              onCreateDocument={handleCreateDocument}
+              onLogout={handleLogout}
+              userId={userId}
+              userName={userName}
+              departmentId={userDepartmentId}
+              departmentName={userDepartmentName}
+              departmentCode={userDepartmentCode}
+              masterCopyAccess={userMasterCopyAccess}
+            />
+          )}
         </Route>
         <Route path="/creator/create">
-          <CreateDocumentPage
-            onBack={() => {
-              setInitialDocumentData(null);
-              setLocation("/creator");
-            }}
-            onSubmit={handleDocumentSubmit}
-            onLogout={handleLogout}
-            userName={userName}
-            userFullName={userFullName}
-            userLocation={userLocationState}
-            initialData={initialDocumentData}
-          />
+          {!isAuthenticated ? <Redirect to="/" /> : (
+            <CreateDocumentPage
+              onBack={() => {
+                setInitialDocumentData(null);
+                setLocation("/creator");
+              }}
+              onSubmit={handleDocumentSubmit}
+              onLogout={handleLogout}
+              userName={userName}
+              userFullName={userFullName}
+              userLocation={userLocationState}
+              initialData={initialDocumentData}
+            />
+          )}
         </Route>
         <Route path="/approver">
-          <ApproverDashboard onLogout={handleLogout} userId={userId} approverName={userFullName} departmentId={userDepartmentId} departmentName={userDepartmentName} />
+          {!isAuthenticated ? <Redirect to="/" /> : (
+            <ApproverDashboard onLogout={handleLogout} userId={userId} approverName={userFullName} departmentId={userDepartmentId} departmentName={userDepartmentName} departmentCode={userDepartmentCode} masterCopyAccess={userMasterCopyAccess} />
+          )}
         </Route>
         <Route path="/issuer">
-          <IssuerDashboard onLogout={handleLogout} userId={userId} issuerName={userFullName} departmentId={userDepartmentId} departmentName={userDepartmentName} />
+          {!isAuthenticated ? <Redirect to="/" /> : (
+            <IssuerDashboard onLogout={handleLogout} userId={userId} issuerName={userFullName} departmentId={userDepartmentId} departmentName={userDepartmentName} departmentCode={userDepartmentCode} masterCopyAccess={userMasterCopyAccess} />
+          )}
         </Route>
         <Route path="/recipient">
-          <RecipientDashboard onLogout={handleLogout} userId={userId} recipientName={userFullName} />
+          {!isAuthenticated ? <Redirect to="/" /> : (
+            <RecipientDashboard onLogout={handleLogout} userId={userId} recipientName={userFullName} />
+          )}
         </Route>
         <Route path="/admin">
-          <AdminDashboard onLogout={handleLogout} userId={userId} />
+          {!isAuthenticated ? <Redirect to="/" /> : (
+            <AdminDashboard onLogout={handleLogout} userId={userId} adminName={userFullName} departmentName={userDepartmentName} />
+          )}
         </Route>
         <Route component={NotFound} />
       </Switch>

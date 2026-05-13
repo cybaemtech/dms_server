@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
-import { Upload, FileText, X } from "lucide-react";
+import { Upload, FileText, X, Check } from "lucide-react";
+import { MultiSelect } from "@/components/ui/multi-select";
 import {
   Form,
   FormControl,
@@ -15,49 +16,75 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import { useQuery } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+
+const LOCATION_OPTIONS = [
+  { label: "Unit 1", value: "Unit 1" },
+  { label: "Unit 2", value: "Unit 2" },
+  { label: "Unit 3", value: "Unit 3" },
+  { label: "HO", value: "HO" },
+];
 
 const documentSchema = z.object({
-  docName: z.string().min(1, "Document name is required"),
-  docNumber: z.string().min(1, "Document number is required"),
+  docName: z.string().min(1, "Document title is required"),
+  docNumber: z.string()
+    .min(1, "Document number is required")
+    .regex(/^[A-Z0-9/]+$/, "Only uppercase letters, digits, and '/' are allowed (no spaces)"),
   dateOfIssue: z.string().min(1, "Date of issue is required"),
-  revisionNumber: z.string().optional(), // Auto-calculated
+  revisionNumber: z.string().optional(), // Auto-calculated or manual for migration
   duePeriodYears: z.string().optional(),
   preparerName: z.string().min(1, "Preparer name is required"),
   location: z.string().min(1, "Location is required"),
   reasonForRevision: z.string().optional(),
   previousVersionId: z.string().optional(),
-  dateOfRevision: z.string().min(1, "Date of revision is required"),
+  dateOfRevision: z.string().optional(), // Optional for new documents
   reviewDueDate: z.string().min(1, "Review due date is required"),
+  migrationMode: z.boolean().optional(), // For existing documents being added
 });
 
 type DocumentFormValues = z.infer<typeof documentSchema>;
 
 interface DocumentUploadFormProps {
-  onSubmit?: (data: DocumentFormValues & { file?: File }) => void;
+  onSubmit?: (data: DocumentFormValues & { file?: File }) => Promise<void> | void;
   onCancel?: () => void;
   defaultPreparerName?: string;
   defaultLocation?: string;
   initialData?: any;
+  migrationMode?: boolean; // For adding existing documents
 }
 
-export default function DocumentUploadForm({ onSubmit, onCancel, defaultPreparerName, defaultLocation, initialData }: DocumentUploadFormProps) {
+export default function DocumentUploadForm({ onSubmit, onCancel, defaultPreparerName, defaultLocation, initialData, migrationMode = false }: DocumentUploadFormProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [fileError, setFileError] = useState<string>("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const { data: settingData } = useQuery({
+    queryKey: ["/api/settings/enable_manual_revision"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/settings/enable_manual_revision");
+      return res.json();
+    }
+  });
+
+  const isManualRevEnabled = settingData?.settingValue === 'true';
+
+  const isRevision = !!initialData?.previousVersionId;
   const form = useForm<DocumentFormValues>({
     resolver: zodResolver(documentSchema),
     defaultValues: {
       docName: initialData?.docName || "",
       docNumber: initialData?.docNumber || "",
-      dateOfIssue: new Date().toISOString().split('T')[0],
-      revisionNumber: "Auto-calculated",
+      dateOfIssue: initialData?.dateOfIssue ? new Date(initialData.dateOfIssue).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+      revisionNumber: isRevision ? (initialData?.revisionNo?.toString() || "") : (migrationMode ? "" : "00"),
       duePeriodYears: "3",
       preparerName: defaultPreparerName || "",
       location: initialData?.location || defaultLocation || "",
       reasonForRevision: "",
       previousVersionId: initialData?.previousVersionId || "",
-      dateOfRevision: new Date().toISOString().split('T')[0],
+      dateOfRevision: isRevision ? new Date().toISOString().split('T')[0] : "", // Empty for new documents
       reviewDueDate: "",
+      migrationMode: migrationMode,
     },
   });
 
@@ -66,9 +93,21 @@ export default function DocumentUploadForm({ onSubmit, onCancel, defaultPreparer
 
   useEffect(() => {
     const fetchNextRevision = async () => {
+      // If manual revision entry is enabled for NEW documents, don't automatically fetch or override
+      if (!isRevision && (isManualRevEnabled || migrationMode)) {
+        return;
+      }
+
       if (watchedDocNumber && watchedDocNumber.length > 2) {
         try {
-          const response = await fetch(`/api/documents/next-revision/${encodeURIComponent(watchedDocNumber)}`);
+          // Use POST endpoint to handle document numbers with special characters
+          const response = await fetch('/api/revision-number', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ docNumber: watchedDocNumber }),
+          });
           if (response.ok) {
             const data = await response.json();
             form.setValue("revisionNumber", data.nextRevisionNo.toString());
@@ -85,17 +124,28 @@ export default function DocumentUploadForm({ onSubmit, onCancel, defaultPreparer
 
   // Watch for changes in dateOfRevision to calculate reviewDueDate
   const watchedDateOfRevision = form.watch("dateOfRevision");
+  const watchedDateOfIssue = form.watch("dateOfIssue");
 
   useEffect(() => {
-    if (watchedDateOfRevision) {
-      const revisionDate = new Date(watchedDateOfRevision);
-      if (!isNaN(revisionDate.getTime())) {
-        const dueDate = new Date(revisionDate);
-        dueDate.setFullYear(dueDate.getFullYear() + 3);
-        form.setValue("reviewDueDate", dueDate.toISOString().split('T')[0]);
-      }
+    // Calculate due date: prioritize dateOfRevision, otherwise use dateOfIssue
+    let baseDate: Date | null = null;
+
+    if (watchedDateOfRevision && watchedDateOfRevision !== "" && watchedDateOfRevision !== "-" && watchedDateOfRevision !== "0" && watchedDateOfRevision !== "00") {
+      // If date of revision is selected, use it
+      baseDate = new Date(watchedDateOfRevision);
+    } else if (watchedDateOfIssue) {
+      // Otherwise use date of issue
+      baseDate = new Date(watchedDateOfIssue);
     }
-  }, [watchedDateOfRevision, form]);
+
+    if (baseDate && !isNaN(baseDate.getTime())) {
+      const dueDate = new Date(baseDate);
+      dueDate.setFullYear(dueDate.getFullYear() + 3);
+      // Subtract 1 day to make it 3 years - 1 day
+      dueDate.setDate(dueDate.getDate() - 1);
+      form.setValue("reviewDueDate", dueDate.toISOString().split('T')[0]);
+    }
+  }, [watchedDateOfRevision, watchedDateOfIssue, isRevision, form]);
 
   useEffect(() => {
     if (defaultLocation && !initialData?.location) {
@@ -114,14 +164,22 @@ export default function DocumentUploadForm({ onSubmit, onCancel, defaultPreparer
     }
   };
 
-  const handleSubmit = (data: DocumentFormValues) => {
+  const handleSubmit = async (data: DocumentFormValues) => {
     if (!selectedFile) {
       setFileError("Word document is required for document content.");
       return;
     }
-    // Convert date strings for backend if needed
-    onSubmit?.({ ...data, file: selectedFile });
-    console.log("Form submitted:", { ...data, file: selectedFile?.name });
+
+    if (isSubmitting) return;
+
+    setIsSubmitting(true);
+    try {
+      // Convert date strings for backend if needed
+      await onSubmit?.({ ...data, file: selectedFile });
+      console.log("Form submitted:", { ...data, file: selectedFile?.name });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -135,15 +193,19 @@ export default function DocumentUploadForm({ onSubmit, onCancel, defaultPreparer
               name="revisionNumber"
               render={({ field }) => (
                 <FormItem className="space-y-0.5">
-                  <FormLabel className="text-[10px] uppercase font-bold text-muted-foreground">Revision Number</FormLabel>
+                  <FormLabel className="text-[10px] uppercase font-bold text-muted-foreground">
+                    Revision Number {(migrationMode || (!isRevision && isManualRevEnabled)) && "*"}
+                  </FormLabel>
                   <FormControl>
                     <Input
-                      type="text"
-                      placeholder="Auto-calculated"
+                      type={(migrationMode || (!isRevision && isManualRevEnabled)) ? "number" : "text"}
+                      placeholder={(migrationMode || (!isRevision && isManualRevEnabled)) ? "Enter rev no." : "Auto-calculated"}
                       {...field}
-                      disabled
+                      disabled={!migrationMode && !isManualRevEnabled}
                       data-testid="input-revision-number"
-                      className="h-7 text-xs bg-muted/50 border-muted font-mono text-muted-foreground"
+                      className={`h-7 text-xs font-mono ${(migrationMode || isManualRevEnabled) ? "bg-background border-primary/20" : "bg-muted/50 border-muted text-muted-foreground cursor-not-allowed"}`}
+                      min={(migrationMode || (!isRevision && isManualRevEnabled)) ? 0 : undefined}
+                      step={(migrationMode || (!isRevision && isManualRevEnabled)) ? 1 : undefined}
                     />
                   </FormControl>
                   <FormMessage className="text-[10px]" />
@@ -186,7 +248,7 @@ export default function DocumentUploadForm({ onSubmit, onCancel, defaultPreparer
               name="docName"
               render={({ field }) => (
                 <FormItem className="space-y-0.5">
-                  <FormLabel className="text-xs">Document Name *</FormLabel>
+                  <FormLabel className="text-xs">Document Title *</FormLabel>
                   <FormControl>
                     <Input placeholder="e.g., SOP Name" {...field} data-testid="input-doc-name" className="h-8 text-sm" />
                   </FormControl>
@@ -202,7 +264,17 @@ export default function DocumentUploadForm({ onSubmit, onCancel, defaultPreparer
                 <FormItem className="space-y-0.5">
                   <FormLabel className="text-xs">Document Number *</FormLabel>
                   <FormControl>
-                    <Input placeholder="e.g., QC-SOP-001" {...field} data-testid="input-doc-number" className="h-8 text-sm" />
+                    <Input
+                      placeholder="e.g., NFDCL/F/EHS/02"
+                      {...field}
+                      onChange={(e) => {
+                        const val = e.target.value.toUpperCase().replace(/[^A-Z0-9/]/g, '');
+                        field.onChange(val);
+                      }}
+                      data-testid="input-doc-number"
+                      className="h-8 text-sm"
+                      disabled={isRevision}
+                    />
                   </FormControl>
                   <FormMessage className="text-[10px]" />
                 </FormItem>
@@ -216,7 +288,7 @@ export default function DocumentUploadForm({ onSubmit, onCancel, defaultPreparer
                 <FormItem className="space-y-0.5">
                   <FormLabel className="text-xs">Date of Issue *</FormLabel>
                   <FormControl>
-                    <Input type="date" {...field} data-testid="input-date-issue" className="h-8 text-sm" />
+                    <Input type="date" {...field} data-testid="input-date-issue" className="h-8 text-sm" disabled={isRevision} />
                   </FormControl>
                   <FormMessage className="text-[10px]" />
                 </FormItem>
@@ -230,7 +302,15 @@ export default function DocumentUploadForm({ onSubmit, onCancel, defaultPreparer
                 <FormItem className="space-y-0.5">
                   <FormLabel className="text-xs">Location *</FormLabel>
                   <FormControl>
-                    <Input placeholder="e.g., Factory A" {...field} data-testid="input-location" className="h-8 text-sm bg-muted/50 cursor-default" readOnly />
+                    <MultiSelect
+                      options={LOCATION_OPTIONS}
+                      selected={field.value ? field.value.split(", ").filter(Boolean) : []}
+                      onChange={(selectedValues) => {
+                        field.onChange(selectedValues.join(", "));
+                      }}
+                      placeholder="Select locations..."
+                      disabled={isRevision}
+                    />
                   </FormControl>
                   <FormMessage className="text-[10px]" />
                 </FormItem>
@@ -242,9 +322,25 @@ export default function DocumentUploadForm({ onSubmit, onCancel, defaultPreparer
               name="dateOfRevision"
               render={({ field }) => (
                 <FormItem className="space-y-0.5">
-                  <FormLabel className="text-xs">Date of Rev. *</FormLabel>
+                  <FormLabel className="text-xs">
+                    Date of Rev. {isRevision ? "*" : ""}
+                  </FormLabel>
                   <FormControl>
-                    <Input type="date" {...field} data-testid="input-date-revision" className="h-8 text-sm" />
+                    {!isRevision && !migrationMode && !isManualRevEnabled ? (
+                      <Input
+                        type="text"
+                        value="-"
+                        disabled
+                        className="h-8 text-sm bg-muted/50 text-center text-muted-foreground"
+                      />
+                    ) : (
+                      <Input
+                        type="date"
+                        {...field}
+                        data-testid="input-date-revision"
+                        className={`h-8 text-sm ${(isRevision || migrationMode || isManualRevEnabled) ? "bg-background border-primary/20" : ""}`}
+                      />
+                    )}
                   </FormControl>
                   <FormMessage className="text-[10px]" />
                 </FormItem>
@@ -258,7 +354,7 @@ export default function DocumentUploadForm({ onSubmit, onCancel, defaultPreparer
                 <FormItem className="space-y-0.5">
                   <FormLabel className="text-xs font-semibold text-primary/80">Due Date of Rev. *</FormLabel>
                   <FormControl>
-                    <Input type="date" {...field} data-testid="input-due-date-revision" className="h-8 text-sm border-primary/20 bg-primary/5" />
+                    <Input type="date" {...field} data-testid="input-due-date-revision" className="h-8 text-sm border-primary/20 bg-primary/5" disabled />
                   </FormControl>
                   <FormMessage className="text-[10px]" />
                 </FormItem>
@@ -271,14 +367,15 @@ export default function DocumentUploadForm({ onSubmit, onCancel, defaultPreparer
             name="reasonForRevision"
             render={({ field }) => (
               <FormItem className="mt-3">
-                <FormLabel>Reason for Revision</FormLabel>
+                <FormLabel>Reason {isRevision && "*"}</FormLabel>
                 <FormControl>
                   <Textarea
-                    placeholder="Describe the reason..."
+                    placeholder={isRevision ? "Describe the reason..." : "Describe the reason..."}
                     className="resize-none min-h-[60px]"
                     rows={2}
                     {...field}
                     data-testid="input-revision-reason"
+                    disabled={false}
                   />
                 </FormControl>
                 <FormMessage className="text-[10px]" />
@@ -343,11 +440,11 @@ export default function DocumentUploadForm({ onSubmit, onCancel, defaultPreparer
         </Card>
 
         <div className="flex justify-end gap-3">
-          <Button type="button" variant="outline" size="sm" onClick={onCancel} data-testid="button-cancel">
+          <Button type="button" variant="outline" size="sm" onClick={onCancel} data-testid="button-cancel" disabled={isSubmitting}>
             Cancel
           </Button>
-          <Button type="submit" size="sm" data-testid="button-submit">
-            Submit for Approval
+          <Button type="submit" size="sm" data-testid="button-submit" disabled={isSubmitting}>
+            {isSubmitting ? "Submitting..." : "Submit for Approval"}
           </Button>
         </div>
       </form>

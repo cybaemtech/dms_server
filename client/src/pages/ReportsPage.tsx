@@ -150,7 +150,7 @@ export default function ReportsPage() {
           <TableHeader>
             <TableRow>
               <TableHead>Document Number</TableHead>
-              <TableHead>Document Name</TableHead>
+              <TableHead>Document Title</TableHead>
               <TableHead>User Name</TableHead>
               <TableHead>User Email</TableHead>
               <TableHead>Control Copy No.</TableHead>
@@ -199,7 +199,7 @@ export default function ReportsPage() {
           <TableHeader>
             <TableRow>
               <TableHead>Document Number</TableHead>
-              <TableHead>Document Name</TableHead>
+              <TableHead>Document Title</TableHead>
               <TableHead>User Name</TableHead>
               <TableHead>User Email</TableHead>
               <TableHead>Control Copy No.</TableHead>
@@ -373,7 +373,7 @@ export default function ReportsPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Document Number</TableHead>
-                    <TableHead>Document Name</TableHead>
+                    <TableHead>Document Title</TableHead>
                     <TableHead>Revision</TableHead>
                     <TableHead>Issued By</TableHead>
                     <TableHead>Issued At</TableHead>

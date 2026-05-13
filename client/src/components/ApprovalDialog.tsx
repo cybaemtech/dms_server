@@ -28,12 +28,16 @@ interface DepartmentCategory {
 interface ApprovalDialogProps {
   open: boolean;
   onClose: () => void;
-  onApprove?: (data: { remarks: string; departments: string[]; approverName: string }) => void;
+  onApprove?: (data: { remarks: string; departments: string[]; approverName: string; docNumber: string }) => void;
   onDecline?: (remarks: string) => void;
   title?: string;
   type?: "approve" | "decline";
   approverName?: string;
   nameFieldLabel?: string;
+  initialSelectedDepartments?: string[];
+  initialDocNumber?: string;
+  isRevision?: boolean;
+  submitButtonLabel?: string;
 }
 
 export default function ApprovalDialog({
@@ -45,10 +49,15 @@ export default function ApprovalDialog({
   type = "approve",
   approverName: initialApproverName = "",
   nameFieldLabel = "Approved By",
+  initialSelectedDepartments = [],
+  initialDocNumber = "",
+  isRevision = false,
+  submitButtonLabel,
 }: ApprovalDialogProps) {
   const [remarks, setRemarks] = useState("");
   const [selectedDepartments, setSelectedDepartments] = useState<string[]>([]);
   const [approverName, setApproverName] = useState(initialApproverName);
+  const [docNumber, setDocNumber] = useState(initialDocNumber);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedCategories, setExpandedCategories] = useState<string[]>([]);
@@ -68,19 +77,18 @@ export default function ApprovalDialog({
     }
   }, [categories]);
 
+  // Reset form ONLY when dialog opens
+  const prevOpenRef = useRef(false);
   useEffect(() => {
-    setApproverName(initialApproverName);
-  }, [initialApproverName]);
-
-  // Reset form when dialog opens
-  useEffect(() => {
-    if (open) {
+    if (open && !prevOpenRef.current) {
       setApproverName(initialApproverName);
       setRemarks("");
-      setSelectedDepartments([]);
+      setSelectedDepartments(initialSelectedDepartments || []);
+      setDocNumber(initialDocNumber);
       setSearchQuery("");
     }
-  }, [open, initialApproverName]);
+    prevOpenRef.current = open;
+  }, [open, initialApproverName, initialSelectedDepartments, initialDocNumber]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -88,8 +96,10 @@ export default function ApprovalDialog({
         setDropdownOpen(false);
       }
     };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    if (typeof document !== "undefined") {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }
   }, []);
 
   const toggleCategory = (categoryId: string) => {
@@ -160,12 +170,12 @@ export default function ApprovalDialog({
   const handleSubmit = () => {
     if (type === "approve") {
       const departmentObjects = getSelectedDepartmentObjects();
-      onApprove?.({ remarks, departments: departmentObjects.map(d => d.id), approverName });
+      onApprove?.({ remarks, departments: departmentObjects.map(d => d.id), approverName, docNumber });
     } else {
       onDecline?.(remarks);
     }
     setRemarks("");
-    setSelectedDepartments([]);
+    // Removed setSelectedDepartments([]) reset here to let the useEffect[open] handle it correctly
     // Don't reset approverName here - let it be reset when dialog reopens
     setSearchQuery("");
     onClose();
@@ -197,13 +207,29 @@ export default function ApprovalDialog({
             </div>
           )}
 
+          {type === "approve" && (
+            <div className="space-y-2">
+              <Label htmlFor="docNumber">Document Number (Frozen)</Label>
+              <Input
+                id="docNumber"
+                value={docNumber}
+                onChange={(e) => setDocNumber(e.target.value)}
+                disabled={true}
+                readOnly={true}
+                className="bg-muted cursor-not-allowed font-mono"
+                data-testid="input-approval-doc-number"
+              />
+              <p className="text-[10px] text-muted-foreground italic">Document number is fixed and cannot be changed during {submitButtonLabel === "Issued" ? "issuance" : "approval"}.</p>
+            </div>
+          )}
+
           <div className="space-y-2">
             <Label htmlFor="remarks">Remarks *</Label>
             <Textarea
               id="remarks"
               placeholder={
                 type === "approve"
-                  ? "Add approval remarks..."
+                  ? (submitButtonLabel === "Issued" ? "Add issuance remarks..." : "Add approval remarks...")
                   : "Add reason for declining..."
               }
               value={remarks}
@@ -375,11 +401,11 @@ export default function ApprovalDialog({
           </Button>
           <Button
             onClick={handleSubmit}
-            disabled={!remarks.trim() || (type === "approve" && !approverName.trim())}
+            disabled={!remarks.trim() || (type === "approve" && (!approverName.trim() || !docNumber.trim()))}
             variant={type === "approve" ? "default" : "destructive"}
             data-testid={`button-${type}`}
           >
-            {type === "approve" ? "Approve" : "Decline"}
+            {submitButtonLabel || (type === "approve" ? "Approve" : "Decline")}
           </Button>
         </DialogFooter>
       </DialogContent>

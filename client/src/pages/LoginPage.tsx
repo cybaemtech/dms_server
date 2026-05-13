@@ -20,7 +20,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Toaster, toast } from "react-hot-toast";
 
 const loginSchema = z.object({
-  username: z.string().min(1, "Email is required").email("Please enter a valid email"),
+  username: z.string().min(1, "Username/Email is required"),
   password: z.string().min(1, "Password is required"),
 });
 
@@ -51,7 +51,10 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
   };
 
   const form = useForm<LoginFormValues>({
-    resolver: zodResolver(loginSchema),
+    resolver: zodResolver(z.object({
+      username: z.string().min(1, "Username/Email is required"),
+      password: z.string().min(1, "Password is required"),
+    })),
     defaultValues: {
       username: "",
       password: "",
@@ -74,7 +77,13 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
             color: '#F8FAFC',
           },
         });
-        // We don't need to setIsLoading(false) if we are navigating away
+        
+        // Allow transition animation to play for a short time, 
+        // while the parent component handles the redirect with its own 500ms delay.
+        setTimeout(() => {
+          setIsLoading(false);
+          setIsLoggingIn(false);
+        }, 1200); 
       } else {
         // Login failed (notifications are handled in parent)
         setIsLoggingIn(false);
@@ -340,6 +349,8 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
                     </Button>
                   </form>
                 </Form>
+
+
 
                 <div className="mt-6 flex items-center gap-3">
                   <div className="flex-1 h-px bg-slate-200 dark:bg-slate-800"></div>

@@ -1,6 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 
-export type DocumentStatus = "Pending" | "Approved" | "Declined" | "Issued" | "Revised";
+export type DocumentStatus = "Pending" | "Approved" | "Declined" | "Issued" | "Obsolete" | "Revised";
 
 interface StatusBadgeProps {
   status: DocumentStatus;
@@ -18,6 +18,8 @@ export default function StatusBadge({ status, className }: StatusBadgeProps) {
         return "bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/20";
       case "Issued":
         return "bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/20";
+      case "Obsolete":
+        return "bg-slate-500/10 text-slate-700 dark:text-slate-400 border-slate-500/20";
       case "Revised":
         return "bg-purple-500/10 text-purple-700 dark:text-purple-400 border-purple-500/20";
       default:

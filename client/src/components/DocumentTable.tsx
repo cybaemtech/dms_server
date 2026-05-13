@@ -24,6 +24,8 @@ export interface Document {
   reasonForRevision?: string;
   reviewDueDate?: string;
   departments?: { id: string; name: string }[];
+  previousVersionId?: string | null;
+  hasRevision?: boolean;
 }
 
 interface DocumentTableProps {
@@ -40,6 +42,7 @@ interface DocumentTableProps {
   canEdit?: boolean;
   canDelete?: boolean;
   showLocation?: boolean;
+  showReviewDue?: boolean;
 }
 
 export default function DocumentTable({
@@ -56,6 +59,7 @@ export default function DocumentTable({
   canEdit = false,
   canDelete = false,
   showLocation = false,
+  showReviewDue = false,
 }: DocumentTableProps) {
   return (
     <div className="border border-slate-300 rounded-sm overflow-hidden" data-testid="table-documents">
@@ -63,11 +67,16 @@ export default function DocumentTable({
         <table className="w-full border-collapse">
           <thead>
             <tr className="bg-slate-100 border-b border-slate-300">
-              <th className="px-2 py-1.5 border-r border-slate-300 text-left text-[11px] font-bold text-slate-700 uppercase">Document Name</th>
+              <th className="px-2 py-1.5 border-r border-slate-300 text-left text-[11px] font-bold text-slate-700 uppercase">Document Title</th>
               <th className="px-2 py-1.5 border-r border-slate-300 text-left text-[11px] font-bold text-slate-700 uppercase">Doc Number</th>
               <th className="px-2 py-1.5 border-r border-slate-300 text-left text-[11px] font-bold text-slate-700 uppercase">Status</th>
               <th className="px-2 py-1.5 border-r border-slate-300 text-left text-[11px] font-bold text-slate-700 uppercase">Revision</th>
-              <th className="px-2 py-1.5 border-r border-slate-300 text-left text-[11px] font-bold text-slate-700 uppercase">Date</th>
+              <th className="px-2 py-1.5 border-r border-slate-300 text-left text-[11px] font-bold text-slate-700 uppercase leading-tight">
+                Revision Date
+              </th>
+              {showReviewDue && (
+                <th className="px-2 py-1.5 border-r border-slate-300 text-left text-[11px] font-bold text-slate-700 uppercase">Review Due</th>
+              )}
               <th className="px-2 py-1.5 border-r border-slate-300 text-left text-[11px] font-bold text-slate-700 uppercase">Prepared By</th>
               <th className="px-2 py-1.5 border-r border-slate-300 text-left text-[11px] font-bold text-slate-700 uppercase">Departments</th>
               {showLocation && (
@@ -98,11 +107,20 @@ export default function DocumentTable({
                   <StatusBadge status={doc.status} />
                 </td>
                 <td className="px-2 py-1 border-r border-slate-200 text-center">
-                  <span className="text-xs text-slate-700">Rev {doc.revisionNo}</span>
+                  <span className="text-xs text-slate-700">{doc.revisionNo}</span>
                 </td>
                 <td className="px-2 py-1 border-r border-slate-200">
-                  <span className="text-[10px] text-slate-500 font-medium">{doc.dateOfIssue}</span>
+                  <span className="text-[10px] text-slate-800 font-semibold">
+                    {(doc.dateOfRev && doc.dateOfRev !== "0" && doc.dateOfRev !== "-") ? doc.dateOfRev : doc.dateOfIssue}
+                  </span>
                 </td>
+                {showReviewDue && (
+                  <td className="px-2 py-1 border-r border-slate-200">
+                    <span className="text-[10px] text-red-600 font-bold">
+                      {doc.reviewDueDate ? new Date(doc.reviewDueDate).toLocaleDateString('en-GB') : '-'}
+                    </span>
+                  </td>
+                )}
                 <td className="px-2 py-1 border-r border-slate-200">
                   <span className="text-[10px] text-slate-600 font-medium">{doc.preparedBy}</span>
                 </td>
@@ -137,13 +155,13 @@ export default function DocumentTable({
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="text-xs">
-                          {onViewWord && (
+                          {onViewWord && doc.status !== "Issued" && (
                             <DropdownMenuItem onClick={() => onViewWord(doc)} data-testid={`menu-view-word-${doc.id}`}>
                               <FileText className="w-3.5 h-3.5 mr-2" />
                               View Word
                             </DropdownMenuItem>
                           )}
-                          {onDownload && (
+                          {onDownload && doc.status !== "Issued" && (
                             <DropdownMenuItem onClick={() => onDownload(doc)} data-testid={`menu-download-word-${doc.id}`}>
                               <Download className="w-3.5 h-3.5 mr-2" />
                               Download as Word
@@ -157,7 +175,7 @@ export default function DocumentTable({
                               Edit
                             </DropdownMenuItem>
                           )}
-                          {onRevise && doc.status === "Issued" && (
+                          {onRevise && doc.status === "Issued" && !doc.hasRevision && (
                             <DropdownMenuItem
                               onClick={() => onRevise(doc)}
                             >

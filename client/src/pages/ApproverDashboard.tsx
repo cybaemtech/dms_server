@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import DashboardLayout from "@/components/DashboardLayout";
 import StatCard from "@/components/StatCard";
@@ -11,9 +11,18 @@ import PDFViewer from "@/components/PDFViewer";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FileText, Clock, CheckCircle, Send } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { DocumentStatus } from "@/components/StatusBadge";
+import { Input } from "@/components/ui/input";
+import { Search, ArrowUpDown, Filter, XCircle, Clock, CheckCircle, FileText, Download, Archive } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface ApproverDashboardProps {
   onLogout?: () => void;
@@ -21,6 +30,8 @@ interface ApproverDashboardProps {
   approverName?: string;
   departmentId?: string | null;
   departmentName?: string | null;
+  departmentCode?: string | null;
+  masterCopyAccess?: boolean;
 }
 
 interface ApiDocument {
@@ -34,12 +45,14 @@ interface ApiDocument {
   preparerName?: string;
   approverName?: string;
   issuerName?: string;
-  departments?: Array<{ id: string; name: string }>;
+  departments?: Array<{ id: string; name: string; code?: string }>;
   approvedAt?: string;
   issuedAt?: string;
   createdAt?: string;
   location?: string;
   dateOfRev?: string;
+  creatorDepartmentId?: string | null;
+  creatorDepartmentCode?: string | null;
 }
 
 interface Notification {
@@ -55,7 +68,9 @@ export default function ApproverDashboard({
   userId = "approver-1",
   approverName = "",
   departmentId = null,
-  departmentName = null
+  departmentName = null,
+  departmentCode = null,
+  masterCopyAccess = false
 }: ApproverDashboardProps) {
   const [approveDialogOpen, setApproveDialogOpen] = useState(false);
   const [declineDialogOpen, setDeclineDialogOpen] = useState(false);
@@ -67,6 +82,8 @@ export default function ApproverDashboard({
   const [pdfDocName, setPdfDocName] = useState<string>("");
   const [selectedDoc, setSelectedDoc] = useState<ApiDocument | null>(null);
   const [viewDoc, setViewDoc] = useState<Document | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sortBy, setSortBy] = useState("newest");
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -108,16 +125,37 @@ export default function ApproverDashboard({
     refetchInterval: 5000,
   });
 
-  // "All Issued" tab = only docs issued to approver's own department
-  const { data: allIssuedDocuments = [] } = useQuery<ApiDocument[]>({
-    queryKey: ["/api/documents", "all-issued-approver", departmentId],
+  const { data: allIssuedDocuments = [], isLoading: allIssuedLoading } = useQuery<ApiDocument[]>({
+    queryKey: ["/api/documents", "all-issued-approver", userId],
     queryFn: async () => {
-      // Only show documents issued to this approver's department
-      const url = departmentId
-        ? `/api/documents/department/${departmentId}?status=issued`
-        : `/api/documents?status=issued`;
-      const response = await fetch(url);
+      const response = await fetch(`/api/documents?status=issued&recipientId=${userId}`);
       if (!response.ok) throw new Error("Failed to fetch all issued documents");
+      return response.json();
+    },
+    refetchInterval: 10000,
+  });
+
+  const { data: declinedDocs = [] } = useQuery<ApiDocument[]>({
+    queryKey: ["/api/documents", "declined", departmentId],
+    queryFn: async () => {
+      const url = departmentId
+        ? `/api/documents/department/${departmentId}?status=declined`
+        : "/api/documents?status=declined";
+      const response = await fetch(url);
+      if (!response.ok) throw new Error("Failed to fetch declined documents");
+      return response.json();
+    },
+    refetchInterval: 10000,
+  });
+
+  const { data: obsoleteDocs = [] } = useQuery<ApiDocument[]>({
+    queryKey: ["/api/documents", "obsolete", departmentId],
+    queryFn: async () => {
+      const url = departmentId
+        ? `/api/documents/department/${departmentId}?status=obsolete`
+        : "/api/documents?status=obsolete";
+      const response = await fetch(url);
+      if (!response.ok) throw new Error("Failed to fetch obsolete documents");
       return response.json();
     },
     refetchInterval: 10000,
@@ -183,7 +221,11 @@ export default function ApproverDashboard({
       const response = await fetch(`/api/documents/${data.documentId}/decline`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ declineRemarks: data.declineRemarks }),
+        body: JSON.stringify({
+          declineRemarks: data.declineRemarks,
+          declinedBy: userId,
+          declinerName: approverName
+        }),
       });
       if (!response.ok) throw new Error("Failed to decline document");
       return response.json();
@@ -207,6 +249,12 @@ export default function ApproverDashboard({
   const handleView = (doc: Document) => {
     setViewDoc(doc);
     setViewDialogOpen(true);
+  };
+
+  const handleViewPDF = (doc: Document) => {
+    setPdfDocId(doc.id);
+    setPdfDocName(doc.docName);
+    setPdfViewerOpen(true);
   };
 
   const handleViewWord = (doc: Document) => {
@@ -258,11 +306,6 @@ export default function ApproverDashboard({
     setDeclineDialogOpen(true);
   };
 
-  const handleViewPDF = (doc: Document) => {
-    setPdfDocId(doc.id);
-    setPdfDocName(doc.docName);
-    setPdfViewerOpen(true);
-  };
 
   const todayApproved = approvedDocs.filter(doc => {
     const approvedDate = doc.approvedAt ? new Date(doc.approvedAt) : null;
@@ -273,46 +316,67 @@ export default function ApproverDashboard({
       approvedDate.getFullYear() === today.getFullYear();
   }).length;
 
+  const allRelevantIssuedDocs = useMemo(() => {
+    // Combine all sources of issued documents and de-duplicate
+    const combined = [...issuedDocuments, ...allIssuedDocuments];
+    const unique = new Map<string, ApiDocument>();
+    combined.forEach(doc => {
+      if (doc && doc.id) unique.set(doc.id, doc);
+    });
+    return Array.from(unique.values());
+  }, [issuedDocuments, allIssuedDocuments]);
+
+  const myDeptDocs = useMemo(() => {
+    return allRelevantIssuedDocs.filter(doc => {
+      return (departmentId && doc.creatorDepartmentId === departmentId) ||
+             (departmentCode && doc.creatorDepartmentCode === departmentCode);
+    });
+  }, [allRelevantIssuedDocs, departmentId, departmentCode]);
+
+  const otherDeptDocs = useMemo(() => {
+    return allRelevantIssuedDocs.filter(doc => {
+      return !(
+        (departmentId && doc.creatorDepartmentId === departmentId) ||
+        (departmentCode && doc.creatorDepartmentCode === departmentCode)
+      );
+    });
+  }, [allRelevantIssuedDocs, departmentId, departmentCode]);
+
+  const sortDocs = (docs: ApiDocument[]) => {
+    return [...docs].sort((a, b) => {
+      const dateA = new Date(a.createdAt || 0).getTime();
+      const dateB = new Date(b.createdAt || 0).getTime();
+
+      if (sortBy === "newest") return dateB - dateA;
+      if (sortBy === "oldest") return dateA - dateB;
+      if (sortBy === "doc-asc") return (a.docNumber || "").localeCompare(b.docNumber || "");
+      if (sortBy === "doc-desc") return (b.docNumber || "").localeCompare(a.docNumber || "");
+      return 0;
+    });
+  };
+
+  const transformAndFilter = (docs: ApiDocument[]): Document[] => {
+    const sorted = sortDocs(docs);
+    const filtered = !searchQuery ? sorted : sorted.filter(d =>
+      (d.docName || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (d.docNumber || "").toLowerCase().includes(searchQuery.toLowerCase())
+    );
+
+    return filtered.map(doc => ({
+      id: doc.id,
+      docName: doc.docName,
+      docNumber: doc.docNumber,
+      status: (doc.status.charAt(0).toUpperCase() + doc.status.slice(1)) as DocumentStatus,
+      dateOfIssue: doc.dateOfIssue ? new Date(doc.dateOfIssue).toISOString().split('T')[0] : '',
+      revisionNo: doc.revisionNo,
+      preparedBy: doc.preparerName || 'Unknown',
+      location: doc.location,
+      dateOfRev: doc.dateOfRev ? new Date(doc.dateOfRev).toISOString().split('T')[0] : null,
+      departments: doc.departments
+    }));
+  };
+
   const unreadNotifications = notifications.filter(n => !n.isRead).length;
-
-  const transformedDocs: Document[] = pendingDocs.map(doc => ({
-    id: doc.id,
-    docName: doc.docName,
-    docNumber: doc.docNumber,
-    status: (doc.status.charAt(0).toUpperCase() + doc.status.slice(1)) as DocumentStatus,
-    dateOfIssue: doc.dateOfIssue ? new Date(doc.dateOfIssue).toISOString().split('T')[0] : '',
-    revisionNo: doc.revisionNo,
-    preparedBy: doc.preparerName || 'Unknown',
-    location: doc.location,
-    dateOfRev: doc.dateOfRev ? new Date(doc.dateOfRev).toISOString().split('T')[0] : null,
-    departments: doc.departments
-  }));
-
-  const transformedIssuedDocs: Document[] = issuedDocuments.map(doc => ({
-    id: doc.id,
-    docName: doc.docName,
-    docNumber: doc.docNumber,
-    status: "Issued" as const,
-    dateOfIssue: doc.dateOfIssue ? new Date(doc.dateOfIssue).toISOString().split('T')[0] : '',
-    revisionNo: doc.revisionNo,
-    preparedBy: doc.preparerName || 'Unknown',
-    location: doc.location,
-    dateOfRev: doc.dateOfRev ? new Date(doc.dateOfRev).toISOString().split('T')[0] : null,
-    departments: doc.departments
-  }));
-
-  const transformedAllIssuedDocs: Document[] = allIssuedDocuments.map(doc => ({
-    id: doc.id,
-    docName: doc.docName,
-    docNumber: doc.docNumber,
-    status: "Issued" as const,
-    dateOfIssue: doc.dateOfIssue ? new Date(doc.dateOfIssue).toISOString().split('T')[0] : '',
-    revisionNo: doc.revisionNo,
-    preparedBy: doc.preparerName || 'Unknown',
-    location: doc.location,
-    dateOfRev: doc.dateOfRev ? new Date(doc.dateOfRev).toISOString().split('T')[0] : null,
-    departments: doc.departments
-  }));
 
   return (
     <DashboardLayout
@@ -324,100 +388,151 @@ export default function ApproverDashboard({
     >
       <div className="space-y-4">
         <div>
-          <h2 className="text-lg font-bold text-foreground">Pending Approvals</h2>
-          <p className="text-xs text-muted-foreground">
-            Review and approve documents for issuance
+          <h2 className="text-lg font-bold text-foreground">
+            Approver Dashboard ({approverName || "User"} - {departmentName || "No Department"})
+          </h2>
+          <p className="text-[11px] text-muted-foreground">
+            Complete document oversight and approval workflow
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
           <StatCard
             title="Pending Approval"
             value={pendingDocs.length}
             icon={Clock}
             variant="amber"
-            trend="Requires your review"
           />
           <StatCard
             title="Approved Today"
             value={todayApproved}
             icon={CheckCircle}
             variant="green"
-            trend={`Total approved: ${approvedDocs.length}`}
+          />
+          <StatCard
+            title="Declined"
+            value={declinedDocs.length}
+            icon={XCircle}
+            variant="red"
           />
           <StatCard
             title="Total Reviewed"
-            value={approvedDocs.length + pendingDocs.length}
+            value={approvedDocs.length + pendingDocs.length + declinedDocs.length}
             icon={FileText}
             variant="blue"
-            trend="All time documents"
           />
         </div>
 
-        <Card className="p-4">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-base font-semibold">Documents Awaiting Review</h3>
-            <Button variant="outline" size="sm" className="h-8 text-xs font-bold" data-testid="button-export">
-              Export Log
+        <div className="flex flex-col md:flex-row gap-3 items-end md:items-center justify-between mb-4 mt-6">
+          <div className="relative flex-1 max-w-sm w-full">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search documents..."
+              className="pl-9 h-9 text-xs"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-medium text-muted-foreground whitespace-nowrap">Sort By:</span>
+            <Select value={sortBy} onValueChange={setSortBy}>
+              <SelectTrigger className="h-8 w-[140px] text-[11px]">
+                <SelectValue placeholder="Sort order" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="newest">Newest First</SelectItem>
+                <SelectItem value="oldest">Oldest First</SelectItem>
+                <SelectItem value="doc-asc">Document No. (A-Z)</SelectItem>
+                <SelectItem value="doc-desc">Document No. (Z-A)</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button variant="outline" size="sm" className="h-8 gap-1.5 font-bold">
+              <Download className="w-3.5 h-3.5" />
+              <span className="text-xs">Export Log</span>
             </Button>
           </div>
+        </div>
 
-          {isLoadingDocs ? (
-            <div className="text-center py-8 text-muted-foreground">Loading documents...</div>
-          ) : transformedDocs.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">No pending documents</div>
-          ) : (
-            <DocumentTable
-              documents={transformedDocs}
-              onView={handleView}
-              onViewWord={handleViewWord}
-              onDownload={handleDownload}
-              onApprove={handleApprove}
-              onDecline={handleDecline}
-              showLocation={true}
-            />
-          )}
-        </Card>
-
-        <Card className="p-4">
-          <Tabs defaultValue="my-department" className="w-full">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-base font-semibold">Issued Documents</h3>
-              <TabsList>
-                <TabsTrigger value="my-department">My Department</TabsTrigger>
-                <TabsTrigger value="all-issued">All Issued</TabsTrigger>
-              </TabsList>
-            </div>
+        <Card className="p-3.5 border-slate-200">
+          <Tabs defaultValue="pending" className="w-full">
+            <TabsList className="bg-slate-100 p-0.5 h-9 mb-4">
+              <TabsTrigger value="my-department" className="text-xs h-8 px-4">My Department Document</TabsTrigger>
+              {(masterCopyAccess || otherDeptDocs.length > 0) && (
+                <TabsTrigger value="other-department" className="text-xs h-8 px-4">Other Department Document</TabsTrigger>
+              )}
+              <TabsTrigger value="pending" className="text-xs h-8 px-4 font-bold">Pending ({pendingDocs.length})</TabsTrigger>
+              <TabsTrigger value="declined" className="text-xs h-8 px-4 text-red-600">Decline ({declinedDocs.length})</TabsTrigger>
+            </TabsList>
 
             <TabsContent value="my-department">
-              {transformedIssuedDocs.length > 0 ? (
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="text-[13px] font-bold text-foreground">My Department Issued Documents</h4>
+                <Badge variant="outline" className="text-[10px] bg-green-50">{myDeptDocs.length} Active</Badge>
+              </div>
+              <DocumentTable
+                documents={transformAndFilter(myDeptDocs)}
+                onView={handleViewPDF}
+                showActions={true}
+                showLocation={true}
+              />
+            </TabsContent>
+
+            <TabsContent value="other-department">
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="text-[13px] font-bold text-foreground">Other Department Issued Documents</h4>
+                <Badge variant="outline" className="text-[10px] bg-blue-50">{otherDeptDocs.length} Shared</Badge>
+              </div>
+              <DocumentTable
+                documents={transformAndFilter(otherDeptDocs)}
+                onView={handleViewPDF}
+                showActions={true}
+                showLocation={true}
+              />
+            </TabsContent>
+
+            <TabsContent value="pending">
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="text-[13px] font-bold text-foreground">Documents Awaiting Your Review</h4>
+                <Badge variant="outline" className="text-[10px] bg-amber-50">{pendingDocs.length} Pending</Badge>
+              </div>
+              {isLoadingDocs ? (
+                <div className="text-center py-8 text-muted-foreground">Loading documents...</div>
+              ) : pendingDocs.length === 0 ? (
+                <div className="border rounded-lg p-12 text-center bg-slate-50/50">
+                  <Clock className="w-12 h-12 mx-auto text-muted-foreground mb-4 opacity-20" />
+                  <p className="text-sm text-muted-foreground">No pending documents</p>
+                </div>
+              ) : (
                 <DocumentTable
-                  documents={transformedIssuedDocs.slice(0, 10)}
-                  onView={handleViewPDF}
-                  showActions={true}
+                  documents={transformAndFilter(pendingDocs)}
+                  onView={handleView}
+                  onViewWord={handleViewWord}
+                  onDownload={handleDownload}
+                  onApprove={handleApprove}
+                  onDecline={handleDecline}
                   showLocation={true}
                 />
-              ) : (
-                <div className="border rounded-lg p-12 text-center">
-                  <Send className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-                  <p className="text-sm text-muted-foreground">No issued documents in your department yet</p>
-                </div>
               )}
             </TabsContent>
 
-            <TabsContent value="all-issued">
-              {transformedAllIssuedDocs.length > 0 ? (
+            <TabsContent value="declined">
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="text-[13px] font-bold text-red-700">Declined Documents</h4>
+                <Badge variant="outline" className="text-[10px] bg-red-50 text-red-600 border-red-200">{declinedDocs.length} Declined</Badge>
+              </div>
+              {declinedDocs.length === 0 ? (
+                <div className="border rounded-lg p-12 text-center bg-slate-50/50">
+                  <XCircle className="w-12 h-12 mx-auto text-muted-foreground mb-4 opacity-20" />
+                  <p className="text-sm text-muted-foreground">No declined documents</p>
+                </div>
+              ) : (
                 <DocumentTable
-                  documents={transformedAllIssuedDocs.slice(0, 10)}
-                  onView={handleViewPDF}
-                  showActions={true}
+                  documents={transformAndFilter(declinedDocs)}
+                  onView={handleView}
+                  onViewWord={handleViewWord}
+                  onDownload={handleDownload}
                   showLocation={true}
                 />
-              ) : (
-                <div className="border rounded-lg p-12 text-center">
-                  <Send className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-                  <p className="text-sm text-muted-foreground">No issued documents found</p>
-                </div>
               )}
             </TabsContent>
           </Tabs>
@@ -458,6 +573,8 @@ export default function ApproverDashboard({
         title={`Approve: ${selectedDoc?.docName}`}
         approverName={approverName}
         nameFieldLabel="Approved By"
+        initialDocNumber={selectedDoc?.docNumber || ""}
+        initialSelectedDepartments={selectedDoc?.departments?.map(d => d.id) || []}
       />
 
       <ApprovalDialog
@@ -481,6 +598,8 @@ export default function ApproverDashboard({
         open={viewDialogOpen}
         onClose={() => setViewDialogOpen(false)}
         onDownload={handleDownload}
+        onViewPdf={handleViewPDF}
+        onViewWord={handleViewWord}
       />
 
       <WordDocumentViewer

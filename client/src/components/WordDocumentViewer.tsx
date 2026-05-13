@@ -20,16 +20,18 @@ export function WordDocumentViewer({ documentId, open, onOpenChange }: WordDocum
     queryFn: async () => {
       const response = await fetch(`/api/documents/${documentId}/view-word`);
       if (!response.ok) {
-        throw new Error("Failed to load Word document");
+        const errData = await response.json().catch(() => null);
+        throw new Error(errData?.message || "Failed to load Word document. The file may not be available.");
       }
       return response.json();
     },
     enabled: open && !!documentId,
+    retry: false, // Don't retry since it might be a 400 .doc or 404 missing file
   });
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col" data-testid="dialog-word-viewer">
+      <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col" data-testid="dialog-word-viewer" aria-describedby="word-viewer-description">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FileText className="w-5 h-5" />
@@ -41,6 +43,9 @@ export function WordDocumentViewer({ documentId, open, onOpenChange }: WordDocum
               <span>Document Viewer</span>
             )}
           </DialogTitle>
+          <div id="word-viewer-description" className="sr-only">
+            Displays the contents of the selected Word document.
+          </div>
         </DialogHeader>
 
         <div className="flex-1 overflow-auto">
@@ -55,7 +60,7 @@ export function WordDocumentViewer({ documentId, open, onOpenChange }: WordDocum
             <Alert variant="destructive" data-testid="error-word-viewer">
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>
-                Failed to load document. The file may not be available.
+                {error instanceof Error ? error.message : "Failed to load document."}
               </AlertDescription>
             </Alert>
           )}
